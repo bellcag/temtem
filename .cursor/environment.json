@@ -1,11 +1,11 @@
 {
-  "name": "Temtem Dex",
+  "name": "TeMPo Portal",
   "install": "npm ci",
   "terminals": [
     {
       "name": "dev",
-      "command": "npm run dev",
-      "description": "Vite dev server for Temtem Dex on http://localhost:5173"
+      "command": "npm run dev -- --host 0.0.0.0",
+      "description": "Vite dev server for the TeMPo prototype on port 5173 (Process v3 at /process-v3). --host binds all interfaces so 127.0.0.1 and forwarded ports work."
     }
   ],
   "ports": [

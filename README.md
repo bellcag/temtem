@@ -1,44 +1,59 @@
-# Temtem Dex
+# TeMPo prototype
 
-A small, modern web app for browsing a collection of Temtem-style creatures. Search
-by name, filter by type, and favorite the ones you want on your squad (favorites
-persist in `localStorage`).
+Standalone copy of the Tenant Management Portal prototype (Vite + React + Tailwind + Runway tokens). Process v3 lives at `/process-v3`.
 
-Built with [Vite](https://vite.dev), [React](https://react.dev), and TypeScript.
-
-## Prerequisites
-
-- Node.js 20+ (developed on Node 22)
-- npm 10+
-
-## Getting started
+## Run as its own app
 
 ```bash
-npm ci        # install dependencies (uses the committed lockfile)
-npm run dev   # start the dev server on http://localhost:5173
+npm install
+npm run dev
 ```
 
-## Scripts
+Open http://127.0.0.1:5173/process-v3
 
-| Command           | Description                                      |
-| ----------------- | ------------------------------------------------ |
-| `npm run dev`     | Start the Vite dev server (host `0.0.0.0:5173`). |
-| `npm run build`   | Type-check and build the production bundle.       |
-| `npm run preview` | Preview the production build on port `4173`.      |
-| `npm run lint`    | Run ESLint over the project.                      |
+## Bring into another repo
 
-## Project structure
+**Option A — keep it as a folder inside the other repo** (fastest)
 
-```
-src/
-  data/temtem.ts        # creature data + type colors
-  components/TemCard.tsx # single creature card
-  App.tsx               # search / filter / favorites UI
-  index.css, App.css    # styling
+```bash
+# from the other repo
+unzip ~/tempo-prototype.zip
+# or
+cp -R ~/tempo-prototype ./tempo-prototype
+cd tempo-prototype && npm install && npm run dev
 ```
 
-## Cloud Agent environment
+**Option B — merge into an existing Vite + React app**
 
-`.cursor/environment.json` configures the Cursor Cloud Agent environment: `npm ci`
-installs dependencies and a `dev` terminal runs `npm run dev` so the app is available
-on port `5173`.
+1. Copy `src/` into the other app (resolve name clashes).
+2. Copy `public/docs/`, `public/favicon.svg`, and `public/icons.svg`.
+3. Merge Runway tokens from `src/index.css` into the other app’s CSS.
+4. Add the `@` alias (`@/*` → `src/*`) in Vite + tsconfig, matching `vite.config.ts` and `tsconfig.app.json`.
+5. Install deps: `react-router-dom`, `lucide-react`, `clsx`, `tailwind-merge`, plus Tailwind 4 (`tailwindcss`, `@tailwindcss/vite`).
+6. Mount the route:
+
+```tsx
+<Route path="process-v3" element={<ProcessV3Page />} />
+```
+
+Process nav currently points at `/process-v3` (`src/components/SideNav.tsx`). Wrap with `AppStateProvider` from `src/lib/app-state.tsx` if the shell is not copied.
+
+## Process v3 core files
+
+If you only need the playbook page:
+
+- `src/pages/ProcessV3.tsx`
+- `src/lib/tenancy-data.ts`
+- `src/lib/process-guide.ts`
+- `src/lib/app-state.tsx`
+- `src/lib/utils.ts`
+- `src/components/DocumentPreviewDrawer.tsx`
+- `src/index.css` (tokens)
+
+v1 and v2 are included (`/process`, `/process-v2`) so you can still compare.
+
+## Notes
+
+- Demo role switcher is in the side nav. Production would use the signed-in account.
+- Document previews use PDFs under `public/docs/`.
+- Cursor Runway rule: `.cursor/rules/runway-dls.mdc`.
