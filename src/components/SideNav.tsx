@@ -24,6 +24,11 @@ import {
 } from "@/lib/app-state";
 import { TENANT, OFFICER, CONTRACTOR } from "@/lib/tenancy-data";
 import { cn } from "@/lib/utils";
+import {
+  Button,
+  DropdownField,
+  SegmentedControl,
+} from "@/components/runway";
 
 type NavChild = { to: string; label: string; icon: LucideIcon };
 type NavItem = {
@@ -62,48 +67,6 @@ const ROLES: { id: Role; label: string }[] = [
   { id: "contractor", label: "Contractor" },
   { id: "officer", label: "Project Officer" },
 ];
-
-function SegmentGroup<T extends string>({
-  label,
-  options,
-  value,
-  onSelect,
-  locked,
-}: {
-  label: string;
-  options: readonly T[];
-  value: T | null;
-  onSelect: (v: T) => void;
-  locked?: boolean;
-}) {
-  return (
-    <div>
-      <div className="px-2 pb-1 text-[10px] font-bold uppercase tracking-wider text-grey-500">
-        {label}
-        {locked ? " · locked" : ""}
-      </div>
-      <div className="flex gap-1 rounded-[var(--radius-sm)] border border-grey-100 bg-white p-1">
-        {options.map((o) => (
-          <button
-            key={o}
-            type="button"
-            disabled={locked}
-            onClick={() => onSelect(o)}
-            className={cn(
-              "flex-1 rounded-[var(--radius-sm)] px-2 py-1.5 text-xs font-bold transition",
-              value === o
-                ? "bg-purple-600 text-white"
-                : "text-grey-600 hover:text-black",
-              locked && "cursor-not-allowed opacity-70",
-            )}
-          >
-            {o}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-}
 
 export function SideNav({
   onNavigate,
@@ -209,21 +172,19 @@ export function SideNav({
       </div>
 
       <div className={cn("px-4 pb-4", collapsed && "tablet:hidden")}>
-        <label className="mb-1 block px-2 text-[10px] font-bold uppercase tracking-wider text-grey-500">
-          Demo: sign in as
-        </label>
-        <select
+        <DropdownField
+          label="Demo: sign in as"
           value={role}
           onChange={(e) => setRole(e.target.value as Role)}
-          className="w-full rounded-[var(--radius-sm)] border border-grey-200 bg-white px-3 py-2 text-sm font-bold text-black"
           title="Prototype only — switches demo account"
+          className="px-0"
         >
           {ROLES.map((r) => (
             <option key={r.id} value={r.id}>
               {r.label}
             </option>
           ))}
-        </select>
+        </DropdownField>
         <p className="mt-1.5 px-2 text-[10px] leading-snug text-grey-400">
           Prototype only. Production uses the signed-in account.
         </p>
@@ -254,24 +215,30 @@ export function SideNav({
         </button>
         {ctxOpen && (
           <div className="mt-3 space-y-3">
-            <SegmentGroup
+            <SegmentedControl
               label="Terminal"
               options={TERMINALS}
               value={current?.terminal ?? null}
               onSelect={(terminal) => pick({ terminal })}
+              size="sm"
+              className="px-2"
             />
-            <SegmentGroup
+            <SegmentedControl
               label="Tenancy"
               options={TENANCY_TYPES}
               value={current?.tenancyType ?? null}
               onSelect={(tenancyType) => pick({ tenancyType })}
+              size="sm"
+              className="px-2"
             />
-            <SegmentGroup
+            <SegmentedControl
               label="Zone"
               options={["Airside"] as const}
               value="Airside"
               onSelect={() => pick({ zone: "Airside" })}
               locked
+              size="sm"
+              className="px-2"
             />
             {isOfficer && !officerSelection && (
               <p className="px-2 text-[11px] text-grey-500">
@@ -389,18 +356,17 @@ export function SideNav({
       </nav>
 
       <div className={cn("border-t border-grey-75 p-4", collapsed && "tablet:p-2")}>
-        <button
-          type="button"
+        <Button
           title="Ask Assistant"
           onClick={() => openAssistant()}
           className={cn(
-            "flex w-full items-center gap-2 rounded-[var(--radius-sm)] bg-purple-600 px-3 py-2.5 text-sm font-bold text-white hover:bg-purple-700",
+            "w-full",
             collapsed && "tablet:justify-center tablet:px-0",
           )}
         >
           <Sparkles className="h-4 w-4 shrink-0" />
           <span className={cn(collapsed && "tablet:hidden")}>Ask Assistant</span>
-        </button>
+        </Button>
       </div>
     </aside>
   );
