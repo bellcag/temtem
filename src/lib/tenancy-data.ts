@@ -313,7 +313,7 @@ export const PHASES: Phase[] = [
             name: "Supporting Document Submission",
             responsible: "You",
             what: "Bundle remaining permits into one Permit to Work application and upload supporting documents in OneCalendar.",
-            whatFor: { contractor: "Bundle remaining permits into one Permit to Work application and upload supporting documents in OneCalendar.", officer: "Bundle remaining permits into one Permit to Work application and upload supporting documents in OneCalendar." },
+            whatFor: { tenant: "Your contractor bundles remaining permits into one Permit to Work and uploads supporting documents in OneCalendar.", contractor: "Bundle remaining permits into one Permit to Work application and upload supporting documents in OneCalendar.", officer: "Bundle remaining permits into one Permit to Work application and upload supporting documents in OneCalendar." },
             subSteps: [
               { text: "Complete the remaining steps and submit everything as one Permit to Work application in OneCalendar.", audience: "contractor" },
               { text: "Email the QP-endorsed Letter of Undertaking to your Project Officer.", audience: "contractor" },
@@ -348,7 +348,7 @@ export const PHASES: Phase[] = [
             name: "Requests Outside OneCalendar",
             responsible: "You",
             what: "Submit any IFM permissions that sit outside OneCalendar so they do not block site start.",
-            whatFor: { contractor: "Submit any IFM permissions that sit outside OneCalendar so they do not block site start.", officer: "Submit any IFM permissions that sit outside OneCalendar so they do not block site start." },
+            whatFor: { tenant: "Your contractor submits any IFM permissions that sit outside OneCalendar so they do not block site start.", contractor: "Submit any IFM permissions that sit outside OneCalendar so they do not block site start.", officer: "Submit any IFM permissions that sit outside OneCalendar so they do not block site start." },
             subSteps: [
               { text: "Submit any IFM permissions that sit outside OneCalendar so they don’t block site start.", audience: "contractor" },
             ],
@@ -371,7 +371,7 @@ export const PHASES: Phase[] = [
             name: "Fire Safety Authority Assessment",
             responsible: "You",
             what: "Ensure the contractor engages a QP/PE to confirm FSC, Minor A&A or Temporary Fire Permit needs.",
-            whatFor: { contractor: "Engage a QP/PE to confirm whether FSC, Minor A&A or Temporary Fire Permit is required for the proposed works.", officer: "Ensure the contractor engages a QP/PE to confirm FSC, Minor A&A or Temporary Fire Permit needs." },
+            whatFor: { tenant: "Your contractor engages a QP/PE to confirm whether FSC, Minor A&A or Temporary Fire Permit is required.", contractor: "Engage a QP/PE to confirm whether FSC, Minor A&A or Temporary Fire Permit is required for the proposed works.", officer: "Ensure the contractor engages a QP/PE to confirm FSC, Minor A&A or Temporary Fire Permit needs." },
             subSteps: [
               { text: "Engage a QP/PE to confirm whether an FSC, Minor A&A or Temporary Fire Permit is required.", audience: "contractor" },
             ],
@@ -529,7 +529,7 @@ export const PHASES: Phase[] = [
             name: "Point of Sales Data Reporting",
             responsible: "CAG",
             what: "Pull POS insights and circulate the sales summary to stakeholders (Retail/F&B).",
-            whatFor: { officer: "Pull POS insights and circulate the sales summary to stakeholders (Retail/F&B)." },
+            whatFor: { tenant: "Your Project Officer pulls POS insights and shares the sales summary with stakeholders.", contractor: "POS sales reporting sits with the tenant account and Project Officer.", officer: "Pull POS insights and circulate the sales summary to stakeholders (Retail/F&B)." },
             subSteps: [
               { text: "Pull sales information from the Point of Sales backend using Customer Discovery Insights.", tag: "Retail / F&B", audience: "officer" },
               { text: "Synthesise the sales information from the Point of Sales data.", tag: "Retail / F&B", audience: "officer" },
@@ -657,7 +657,7 @@ export const PHASES: Phase[] = [
             name: "Reinstatement Permit Submission",
             responsible: "You",
             what: "Contractor submits the reinstatement Permit to Work in OneCalendar for the outgoing unit.",
-            whatFor: { contractor: "Submit the reinstatement Permit to Work Permit to Work in OneCalendar for the outgoing unit.", officer: "Contractor submits the reinstatement Permit to Work in OneCalendar for the outgoing unit." },
+            whatFor: { tenant: "Your contractor submits the reinstatement Permit to Work in OneCalendar.", contractor: "Submit the reinstatement Permit to Work Permit to Work in OneCalendar for the outgoing unit.", officer: "Contractor submits the reinstatement Permit to Work in OneCalendar for the outgoing unit." },
             subSteps: [
               { text: "Submit the reinstatement Permit to Work in OneCalendar.", tag: "Outgoing Tenant", audience: "contractor" },
             ],

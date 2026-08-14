@@ -83,12 +83,92 @@ export function partitionGuide(subs: SubStep[], role: Role) {
   return { mine, others };
 }
 
+export type SubActor = "you" | "tenant" | "contractor" | "officer" | "shared";
+
+export type OrderedSub = { sub: SubStep; actor: SubActor };
+
 export type ClassifiedStep = {
   step: Step;
   mine: SubStep[];
   others: SubStep[];
   kind: "yours" | "also";
+  /** Role-visible sub-steps in source order. */
+  ordered?: OrderedSub[];
 };
+
+/** Who this sub-step belongs to, from the viewing role’s point of view. */
+export function subActor(audience: Audience, viewRole: Role): SubActor {
+  if (isMyAction(viewRole, audience)) return "you";
+  if (audience === "shared") return "shared";
+  if (audience === "tenant") return "tenant";
+  if (audience === "contractor") return "contractor";
+  if (audience === "officer") return "officer";
+  if (Array.isArray(audience)) {
+    if (viewRole === "officer") {
+      if (audience.includes("tenant")) return "tenant";
+      if (audience.includes("contractor")) return "contractor";
+    }
+    if (audience.includes("tenant")) return "tenant";
+    if (audience.includes("contractor")) return "contractor";
+    if (audience.includes("officer")) return "officer";
+  }
+  return "shared";
+}
+
+export function actorLabel(actor: SubActor): string {
+  switch (actor) {
+    case "you":
+      return "You";
+    case "tenant":
+      return "Tenant";
+    case "contractor":
+      return "Contractor";
+    case "officer":
+      return "Project Officer";
+    case "shared":
+      return "Shared";
+  }
+}
+
+/**
+ * A step belongs on the unit path when any sub-step applies to this
+ * unit type / terminal. Role must not change this — otherwise step
+ * numbers diverge between tenant, contractor and officer.
+ */
+export function stepOnUnitPath(
+  step: Step,
+  tenancyType: string,
+  terminal: string,
+  showFull: boolean,
+): boolean {
+  return step.subSteps.some((s) =>
+    tagApplies(s.tag, tenancyType, terminal, showFull),
+  );
+}
+
+/** Operate is a tenant-account phase; contractors stay on Setup / Build / Exit. */
+export function phaseOnRolePath(phase: Phase, role: Role): boolean {
+  if (role === "contractor" && phase.id === "operate") return false;
+  return true;
+}
+
+/** Canonical step names for this unit (tag-filtered, not role-filtered). */
+export function spineStepNames(
+  phase: Phase,
+  tenancyType: string,
+  terminal: string,
+  showFull: boolean,
+): string[] {
+  const names: string[] = [];
+  for (const stage of phase.stages) {
+    for (const step of stage.steps) {
+      if (stepOnUnitPath(step, tenancyType, terminal, showFull)) {
+        names.push(step.name);
+      }
+    }
+  }
+  return names;
+}
 
 export function classifyStep(
   step: Step,
@@ -100,8 +180,35 @@ export function classifyStep(
   const subs = filterSubSteps(step, role, tenancyType, terminal, showFull);
   if (subs.length === 0) return null;
   const { mine, others } = partitionGuide(subs, role);
-  if (mine.length > 0) return { step, mine, others, kind: "yours" };
-  return { step, mine, others, kind: "also" };
+  const ordered = subs.map((sub) => ({
+    sub,
+    actor: subActor(sub.audience, role),
+  }));
+  if (mine.length > 0) return { step, mine, others, ordered, kind: "yours" };
+  return { step, mine, others, ordered, kind: "also" };
+}
+
+/**
+ * Same numbered spine as `spineStepNames`. Role only changes whether
+ * the step is an action card or a context note — never whether it
+ * occupies a number.
+ */
+export function classifyStepOnPath(
+  step: Step,
+  role: Role,
+  tenancyType: string,
+  terminal: string,
+  showFull: boolean,
+): ClassifiedStep | null {
+  if (!stepOnUnitPath(step, tenancyType, terminal, showFull)) return null;
+  const subs = filterSubSteps(step, role, tenancyType, terminal, showFull);
+  const { mine, others } = partitionGuide(subs, role);
+  const ordered = subs.map((sub) => ({
+    sub,
+    actor: subActor(sub.audience, role),
+  }));
+  if (mine.length > 0) return { step, mine, others, ordered, kind: "yours" };
+  return { step, mine, others, ordered, kind: "also" };
 }
 
 export function classifyStage(
@@ -115,6 +222,24 @@ export function classifyStage(
   const also: ClassifiedStep[] = [];
   for (const step of stage.steps) {
     const c = classifyStep(step, role, tenancyType, terminal, showFull);
+    if (!c) continue;
+    if (c.kind === "yours") yours.push(c);
+    else also.push(c);
+  }
+  return { yours, also };
+}
+
+export function classifyStageOnPath(
+  stage: Stage,
+  role: Role,
+  tenancyType: string,
+  terminal: string,
+  showFull: boolean,
+) {
+  const yours: ClassifiedStep[] = [];
+  const also: ClassifiedStep[] = [];
+  for (const step of stage.steps) {
+    const c = classifyStepOnPath(step, role, tenancyType, terminal, showFull);
     if (!c) continue;
     if (c.kind === "yours") yours.push(c);
     else also.push(c);
@@ -136,9 +261,41 @@ export function countYourSteps(
 }
 
 export function alsoLine(c: ClassifiedStep, role: Role) {
+  const purpose = stepWhat(c.step, role);
+  if (purpose) return purpose;
   const fromOthers = c.others[0]?.text;
   if (fromOthers) return fromOthers;
-  return stepWhat(c.step, role);
+  return c.step.what;
+}
+
+/** Numbered journey for a unit path — same names/order across roles. */
+export function pathJourney(
+  phase: Phase,
+  role: Role,
+  tenancyType: string,
+  terminal: string,
+  showFull: boolean,
+): { index: number; name: string; kind: "yours" | "also" }[] {
+  if (!phaseOnRolePath(phase, role)) return [];
+  const list: { index: number; name: string; kind: "yours" | "also" }[] = [];
+  for (const stage of phase.stages) {
+    for (const step of stage.steps) {
+      const c = classifyStepOnPath(
+        step,
+        role,
+        tenancyType,
+        terminal,
+        showFull,
+      );
+      if (!c) continue;
+      list.push({
+        index: list.length + 1,
+        name: c.step.name,
+        kind: c.kind,
+      });
+    }
+  }
+  return list;
 }
 
 export function primarySystemLink(step: Step, subs: SubStep[]) {

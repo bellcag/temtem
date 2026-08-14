@@ -4,11 +4,14 @@ import { ExternalLink, FileText, MapPin, Users } from "lucide-react";
 import { PHASES, UNITS, type Phase, type Unit } from "@/lib/tenancy-data";
 import { useApp, type Role } from "@/lib/app-state";
 import {
+  actorLabel,
   alsoLine,
-  classifyStage,
+  classifyStageOnPath,
   docsForStep,
+  phaseOnRolePath,
   stepWhat,
   type ClassifiedStep,
+  type SubActor,
 } from "@/lib/process-guide";
 import { DocumentPreviewDrawer } from "@/components/DocumentPreviewDrawer";
 import { cn } from "@/lib/utils";
@@ -53,12 +56,6 @@ function stepFocusKey(stageName: string, stepName: string) {
   return `${stageName}::${stepName}`;
 }
 
-type JourneyItem = {
-  kind: "you" | "context";
-  stageName: string;
-  classified: ClassifiedStep;
-};
-
 function AttrChip({ children }: { children: React.ReactNode }) {
   return (
     <span className="inline-flex items-center rounded-[var(--radius-sm)] border border-grey-100 bg-white px-2 py-1 text-[11px] font-bold text-grey-700">
@@ -70,6 +67,7 @@ function AttrChip({ children }: { children: React.ReactNode }) {
 export function ProcessV3Page() {
   const {
     role,
+    setRole,
     unit,
     setUnit,
     units,
@@ -88,6 +86,7 @@ export function ProcessV3Page() {
   const [focusedStep, setFocusedStep] = useState<string | null>(null);
   const [previewDocId, setPreviewDocId] = useState<string | null>(null);
   const [jobId, setJobId] = useState(CONTRACTOR_JOBS[0].id);
+  const [guideLens, setGuideLens] = useState<Role>("officer");
 
   // Tenant / contractor active context (F0)
   useEffect(() => {
@@ -134,6 +133,15 @@ export function ProcessV3Page() {
 
   const needsContext = isOfficer && isUnscoped && processView !== "full";
   const showFull = isOfficer && (processView === "full" || isUnscoped);
+  const classifyRole: Role =
+    isOfficer && processView === "my-unit" && !isUnscoped ? guideLens : role;
+  const isPreviewing = isOfficer && classifyRole !== "officer";
+
+  useEffect(() => {
+    if (!isOfficer || processView === "full" || isUnscoped) {
+      setGuideLens("officer");
+    }
+  }, [isOfficer, processView, isUnscoped]);
 
   const selectPhase = (id: Phase["id"]) => {
     setActiveId(id);
@@ -154,11 +162,12 @@ export function ProcessV3Page() {
   const active = PHASES.find((p) => p.id === activeId)!;
 
   const stageBlocks = useMemo(() => {
+    if (!phaseOnRolePath(active, classifyRole)) return [];
     return active.stages
       .map((stage, si) => {
-        const { yours, also } = classifyStage(
+        const { yours, also } = classifyStageOnPath(
           stage,
-          role,
+          classifyRole,
           ctxUnit.tenancyType,
           ctxUnit.terminal,
           showFull,
@@ -166,7 +175,7 @@ export function ProcessV3Page() {
         return { stage, si, yours, also };
       })
       .filter((b) => b.yours.length > 0 || b.also.length > 0);
-  }, [active, role, ctxUnit.tenancyType, ctxUnit.terminal, showFull]);
+  }, [active, classifyRole, ctxUnit.tenancyType, ctxUnit.terminal, showFull]);
 
   const yourStepsFlat = useMemo(() => {
     const list: { stageName: string; classified: ClassifiedStep }[] = [];
@@ -209,10 +218,20 @@ export function ProcessV3Page() {
 
   /** All stages in the active phase (phase structure), plus path counts. */
   const phaseStageMap = useMemo(() => {
+    if (!phaseOnRolePath(active, classifyRole)) {
+      return active.stages.map((stage, si) => ({
+        index: si + 1,
+        name: stage.name,
+        purpose: stage.purpose,
+        yourCount: 0,
+        contextOnly: false,
+        hidden: true,
+      }));
+    }
     return active.stages.map((stage, si) => {
-      const { yours, also } = classifyStage(
+      const { yours, also } = classifyStageOnPath(
         stage,
-        role,
+        classifyRole,
         ctxUnit.tenancyType,
         ctxUnit.terminal,
         showFull,
@@ -226,7 +245,7 @@ export function ProcessV3Page() {
         hidden: yours.length === 0 && also.length === 0,
       };
     });
-  }, [active, role, ctxUnit.tenancyType, ctxUnit.terminal, showFull]);
+  }, [active, classifyRole, ctxUnit.tenancyType, ctxUnit.terminal, showFull]);
 
   const visibleStageCount = phaseStageMap.filter((s) => !s.hidden).length;
 
@@ -269,12 +288,14 @@ export function ProcessV3Page() {
   };
 
   const roleBlurb = isContractor
-    ? "Static guide for this job (Setup, Build, Exit) — not live status."
+    ? "Static guide for this job (Setup, Build, Exit) — not live status. Step numbers match the Project Officer and tenant for this unit."
     : isOfficer
       ? showFull
-        ? "Full process catalogue for coaching — not live status."
-        : "Unit guide for coaching — not live status."
-      : "Static playbook for this outlet — not live status.";
+        ? "Full process catalogue for coaching — not live status. Extra variants can change the count; use My unit when talking someone through their path."
+        : isPreviewing
+          ? `Previewing the ${classifyRole} guide for this unit — same step numbers they see.`
+          : "Unit guide for coaching — not live status. Step numbers match the tenant and contractor on this unit."
+      : "Static playbook for this outlet — not live status. Step numbers match the Project Officer and contractor for this unit.";
 
   return (
     <div className="dls-page">
@@ -290,12 +311,51 @@ export function ProcessV3Page() {
             {roleBlurb}
           </p>
         </div>
-        <Link
-          to="/process-v2"
-          className="shrink-0 text-xs font-bold text-grey-500 hover:text-purple-700"
-        >
-          Open v2
-        </Link>
+        <div className="flex shrink-0 flex-col items-end gap-2">
+          <div className="flex flex-col gap-1">
+            <span className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
+              Demo: sign in as
+            </span>
+            <div className="inline-flex gap-1 rounded-[var(--radius-sm)] border border-grey-200 bg-grey-25 p-1">
+              {(
+                [
+                  ["tenant", "Tenant"],
+                  ["contractor", "Contractor"],
+                  ["officer", "Project Officer"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    if (id === "officer") {
+                      setOfficerSelection({
+                        terminal: ctxUnit.terminal as "T1" | "T2" | "T3" | "T4",
+                        tenancyType: ctxUnit.tenancyType as "Retail" | "F&B",
+                        zone: "Airside",
+                      });
+                    }
+                    setRole(id);
+                  }}
+                  className={cn(
+                    "rounded-[var(--radius-sm)] px-3 py-2 text-xs font-bold transition",
+                    role === id
+                      ? "bg-purple-600 text-white"
+                      : "text-grey-500 hover:text-black",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
+          <Link
+            to="/process-v2"
+            className="text-xs font-bold text-grey-500 hover:text-purple-700"
+          >
+            Open v2
+          </Link>
+        </div>
       </header>
 
       {/* F0 — Active context */}
@@ -371,33 +431,65 @@ export function ProcessV3Page() {
             )}
 
             {isOfficer && (
-              <div className="inline-flex w-full gap-1 rounded-[var(--radius-sm)] border border-grey-200 bg-grey-25 p-1 desktop:w-auto">
-                <button
-                  type="button"
-                  disabled={isUnscoped}
-                  onClick={() => !isUnscoped && setProcessView("my-unit")}
-                  className={cn(
-                    "flex-1 rounded-[var(--radius-sm)] px-3 py-2 text-xs font-bold transition desktop:flex-none",
-                    processView === "my-unit"
-                      ? "bg-purple-600 text-white"
-                      : "text-grey-500 hover:text-black",
-                    isUnscoped && "cursor-not-allowed opacity-50",
-                  )}
-                >
-                  My unit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setProcessView("full")}
-                  className={cn(
-                    "flex-1 rounded-[var(--radius-sm)] px-3 py-2 text-xs font-bold transition desktop:flex-none",
-                    processView === "full"
-                      ? "bg-purple-600 text-white"
-                      : "text-grey-500 hover:text-black",
-                  )}
-                >
-                  Full process
-                </button>
+              <div className="flex w-full flex-col gap-3 desktop:items-end">
+                <div className="inline-flex w-full gap-1 rounded-[var(--radius-sm)] border border-grey-200 bg-grey-25 p-1 desktop:w-auto">
+                  <button
+                    type="button"
+                    disabled={isUnscoped}
+                    onClick={() => !isUnscoped && setProcessView("my-unit")}
+                    className={cn(
+                      "flex-1 rounded-[var(--radius-sm)] px-3 py-2 text-xs font-bold transition desktop:flex-none",
+                      processView === "my-unit"
+                        ? "bg-purple-600 text-white"
+                        : "text-grey-500 hover:text-black",
+                      isUnscoped && "cursor-not-allowed opacity-50",
+                    )}
+                  >
+                    My unit
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setProcessView("full")}
+                    className={cn(
+                      "flex-1 rounded-[var(--radius-sm)] px-3 py-2 text-xs font-bold transition desktop:flex-none",
+                      processView === "full"
+                        ? "bg-purple-600 text-white"
+                        : "text-grey-500 hover:text-black",
+                    )}
+                  >
+                    Full process
+                  </button>
+                </div>
+                {processView === "my-unit" && !isUnscoped && (
+                  <div className="flex w-full flex-col gap-1 desktop:max-w-xs">
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
+                      Preview as
+                    </span>
+                    <div className="inline-flex w-full gap-1 rounded-[var(--radius-sm)] border border-grey-200 bg-grey-25 p-1">
+                      {(
+                        [
+                          ["officer", "You"],
+                          ["tenant", "Tenant"],
+                          ["contractor", "Contractor"],
+                        ] as const
+                      ).map(([id, label]) => (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => setGuideLens(id)}
+                          className={cn(
+                            "flex-1 rounded-[var(--radius-sm)] px-2 py-2 text-xs font-bold transition",
+                            guideLens === id
+                              ? "bg-white text-purple-700 shadow-[var(--shadow-light-bg)]"
+                              : "text-grey-500 hover:text-black",
+                          )}
+                        >
+                          {label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
               </div>
             )}
           </div>
@@ -614,7 +706,7 @@ export function ProcessV3Page() {
                         ) === focusedStep
                       }
                       index={stepIndex}
-                      role={role}
+                      role={classifyRole}
                       showFull={showFull}
                       tenancyType={ctxUnit.tenancyType}
                       terminal={ctxUnit.terminal}
@@ -631,7 +723,7 @@ export function ProcessV3Page() {
                     key={`${item.stageName}-${item.classified.step.name}`}
                     stageName={item.stageName}
                     title={item.classified.step.name}
-                    summary={alsoLine(item.classified, role)}
+                    summary={alsoLine(item.classified, classifyRole)}
                     tenancyType={ctxUnit.tenancyType}
                     terminal={ctxUnit.terminal}
                     zone={ctxUnit.zone}
@@ -693,6 +785,10 @@ function PhaseStepsPanel({
       <p className="mt-3 text-[10px] font-bold uppercase tracking-wider text-grey-500">
         Steps in {active.name}
       </p>
+      <p className="mt-1 text-[11px] font-semibold leading-4 text-grey-500">
+        Same numbers for this unit — role only changes what is yours vs also
+        happening.
+      </p>
       {navSteps.length === 0 ? (
         <p className="mt-2 text-sm text-grey-500">
           No guide steps in this phase for your unit.
@@ -753,7 +849,7 @@ function PhaseStepsPanel({
                           : "text-grey-500 group-hover:text-purple-600",
                       )}
                     >
-                      {item.stageName}
+                      {isNote ? `${item.stageName} · Also` : item.stageName}
                     </span>
                   </span>
                 </button>
@@ -829,18 +925,26 @@ function PathStep({
     return cleaned.filter((s) => !internal.has(s.label.toLowerCase()));
   }, [step.systems, mine, others, role]);
 
-  /** One reading order: your moves first, others woven in the same list. */
+  /** One reading order: source order, labelled by who acts. */
   const flow = useMemo(() => {
+    if (classified.ordered?.length) {
+      return classified.ordered.map(({ sub, actor }) => ({
+        actor,
+        text: sub.text,
+        tag: sub.tag,
+      }));
+    }
     const rows: {
-      kind: "you" | "others";
+      actor: SubActor;
       text: string;
       tag?: string;
     }[] = [];
-    for (const s of mine) rows.push({ kind: "you", text: s.text, tag: s.tag });
+    for (const s of mine)
+      rows.push({ actor: "you", text: s.text, tag: s.tag });
     for (const s of others)
-      rows.push({ kind: "others", text: s.text, tag: s.tag });
+      rows.push({ actor: "shared", text: s.text, tag: s.tag });
     return rows;
-  }, [mine, others]);
+  }, [classified.ordered, mine, others]);
 
   return (
     <li
@@ -912,17 +1016,17 @@ function PathStep({
                   <span
                     className={cn(
                       "mt-0.5 shrink-0 rounded-[var(--radius-sm)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                      row.kind === "you"
+                      row.actor === "you"
                         ? "bg-purple-100 text-purple-700"
                         : "bg-grey-75 text-grey-600",
                     )}
                   >
-                    {row.kind === "you" ? "You" : "Others"}
+                    {actorLabel(row.actor)}
                   </span>
                   <span
                     className={cn(
                       "min-w-0 text-sm leading-relaxed",
-                      row.kind === "you" ? "text-black" : "text-grey-600",
+                      row.actor === "you" ? "text-black" : "text-grey-600",
                     )}
                   >
                     {row.text}
@@ -1085,7 +1189,7 @@ function ContextNote({
         )}
       >
         <p className="text-[10px] font-bold uppercase tracking-wider text-grey-400">
-          {stageName}
+          {stageName} · Also happening
         </p>
         <p className="mt-0.5 text-sm font-semibold leading-[18px] text-grey-700">
           {title}
