@@ -312,31 +312,43 @@ export function ProcessV3Page() {
           </p>
         </div>
         <div className="flex shrink-0 flex-col items-end gap-2">
-          <label className="flex flex-col gap-1">
+          <div className="flex flex-col gap-1">
             <span className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
               Demo: sign in as
             </span>
-            <select
-              value={role}
-              onChange={(e) => {
-                const next = e.target.value as Role;
-                if (next === "officer") {
-                  setOfficerSelection({
-                    terminal: ctxUnit.terminal as "T1" | "T2" | "T3" | "T4",
-                    tenancyType: ctxUnit.tenancyType as "Retail" | "F&B",
-                    zone: "Airside",
-                  });
-                }
-                setRole(next);
-              }}
-              className="rounded-[var(--radius-sm)] border border-grey-200 bg-white px-3 py-2 text-sm font-bold text-black"
-              title="Prototype only — switches demo account"
-            >
-              <option value="tenant">Tenant</option>
-              <option value="contractor">Contractor</option>
-              <option value="officer">Project Officer</option>
-            </select>
-          </label>
+            <div className="inline-flex gap-1 rounded-[var(--radius-sm)] border border-grey-200 bg-grey-25 p-1">
+              {(
+                [
+                  ["tenant", "Tenant"],
+                  ["contractor", "Contractor"],
+                  ["officer", "Project Officer"],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => {
+                    if (id === "officer") {
+                      setOfficerSelection({
+                        terminal: ctxUnit.terminal as "T1" | "T2" | "T3" | "T4",
+                        tenancyType: ctxUnit.tenancyType as "Retail" | "F&B",
+                        zone: "Airside",
+                      });
+                    }
+                    setRole(id);
+                  }}
+                  className={cn(
+                    "rounded-[var(--radius-sm)] px-3 py-2 text-xs font-bold transition",
+                    role === id
+                      ? "bg-purple-600 text-white"
+                      : "text-grey-500 hover:text-black",
+                  )}
+                >
+                  {label}
+                </button>
+              ))}
+            </div>
+          </div>
           <Link
             to="/process-v2"
             className="text-xs font-bold text-grey-500 hover:text-purple-700"
