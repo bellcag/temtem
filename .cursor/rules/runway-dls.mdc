@@ -6,7 +6,13 @@ alwaysApply: false
 
 # Runway DLS (connected)
 
-Design system source (markdown usage guidelines, not an npm component package):
+Primary source — hosted Storybook (built DLS v2):
+
+- https://dev-runway-dls.changiairport.com/?path=/docs/introduction--docs
+- Local stand-ins in this repo: `src/dls/` (Button, Text, chips, Field/Dropdown, Tabs, Drawer, Alert, Badge)
+- Process v4 composes those components
+
+Backup — markdown usage guidelines (not an npm package):
 
 - GitHub: https://github.com/cag-euxui/runway-md-components
 - Local clone: `/Users/bell/runway-md-components`
@@ -16,14 +22,14 @@ Design system source (markdown usage guidelines, not an npm component package):
 
 ## When building UI
 
-1. Prefer tokens and patterns already in `src/index.css` + the `cag-dls` skill.
-2. Before inventing a control (button, chip, input, toggle, header, etc.), open the matching Runway `.md` under `docs/` and follow its usage guidelines (anatomy, variants, do/don’t).
-3. Common paths:
-   - Buttons / chips: `docs/actions-interactions/`
-   - Inputs / search: `docs/inputs/`
-   - Checkboxes / radios / toggles: `docs/selections/`
-   - Headers: `docs/page-navigations/`
-4. This repo is **docs-only** — implement with local React + Tailwind/Runway tokens; do not expect importable React components from the clone.
+1. Prefer `src/dls/` + tokens in `src/index.css`. Match Storybook variants (B2B `semiRounded`, control heights 44/36/28).
+2. If Storybook has no story (SideNav, Card, empty page chrome), use Runway markdown under `docs/` and existing tokens.
+3. Common Storybook paths:
+   - Buttons / chips: Actions & Interactions
+   - Inputs / search: Inputs
+   - Checkboxes / radios / toggles: Selections
+   - Headers: Page Navigation / AdminHeader
+4. This repo does **not** import the private `runway-fe` package — local React + Tailwind that matches the stories.
 
 ## Refresh
 

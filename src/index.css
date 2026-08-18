@@ -24,7 +24,7 @@
   --color-grey-800: #2f2f2f;
   --color-grey-900: #222222;
 
-  /* Colors/Purple Primary */
+  /* Colors/Purple Primary — TeMPo alias (v1–v3) */
   --color-purple-100: #f9f5fc;
   --color-purple-200: #ece0f5;
   --color-purple-300: #d5bbea;
@@ -35,13 +35,57 @@
   --color-purple-800: #4d0a76;
   --color-purple-900: #270641;
 
-  /* Semantic */
-  --color-error-600: #cc1000;
+  /* Storybook Runway DLS v2 — Core/Colours (primary-* utilities) */
+  --color-primary-100: #f9f5fc;
+  --color-primary-200: #ece0f5;
+  --color-primary-300: #d5bbea;
+  --color-primary-400: #ab76d5;
+  --color-primary-500: #8f58be;
+  --color-primary-600: #7a35b0;
+  --color-primary-700: #671a9d;
+  --color-primary-900: #270641;
+
+  /* Semantic — Storybook scales + TeMPo 100s */
   --color-error-100: #fff6f5;
-  --color-warning-600: #f2721b;
+  --color-error-200: #ffe3e0;
+  --color-error-300: #ffa199;
+  --color-error-500: #ee3424;
+  --color-error-600: #cc1000;
   --color-warning-100: #fef5e7;
-  --color-success-600: #008545;
+  --color-warning-200: #fce1b6;
+  --color-warning-300: #f9c26c;
+  --color-warning-600: #f2721b;
+  --color-warning-700: #e06a27;
   --color-success-100: #f3f9f3;
+  --color-success-200: #daedd9;
+  --color-success-300: #bbe2c1;
+  --color-success-600: #008545;
+  --color-gray-blue-200: #dee6f6;
+  --color-gray-blue-300: #b9c6e0;
+  --color-gray-blue-600: #254687;
+
+  /* Storybook type scale (Core/Text) */
+  --text-h5: 24px;
+  --text-h5--line-height: 32px;
+  --text-h6: 20px;
+  --text-h6--line-height: 28px;
+  --text-subheading: 18px;
+  --text-subheading--line-height: 22px;
+  --text-body-l: 16px;
+  --text-body-l--line-height: 20px;
+  --text-body-s: 14px;
+  --text-body-s--line-height: 18px;
+  --text-small: 12px;
+  --text-small--line-height: 16px;
+  --text-xsmall: 11px;
+  --text-xsmall--line-height: 14px;
+  --text-xxsmall: 10px;
+  --text-xxsmall--line-height: 12px;
+
+  --shadow-light: 0 6px 20px 0 #12121214;
+  --shadow-ring-light: 0 0 0 4px #9e77ed3d;
+  --shadow-ring-error: 0 0 0 4px #ffe3e0;
+  --radius-xs: 4px;
 
   /* Radius */
   --radius-sm: 4px;

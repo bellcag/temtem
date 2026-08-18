@@ -4,10 +4,10 @@
   "version": "0.0.0",
   "type": "module",
   "scripts": {
-    "dev": "vite --host",
+    "dev": "vite --host 0.0.0.0 --port 5173 --strictPort",
     "build": "vite build",
     "lint": "oxlint",
-    "preview": "vite preview --host"
+    "preview": "vite preview --host 0.0.0.0 --port 5173 --strictPort"
   },
   "dependencies": {
     "clsx": "^2.1.1",

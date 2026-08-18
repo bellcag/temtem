@@ -1,6 +1,6 @@
 # TeMPo prototype
 
-Standalone copy of the Tenant Management Portal prototype (Vite + React + Tailwind + Runway tokens). Process v3 lives at `/process-v3`.
+Standalone copy of the Tenant Management Portal prototype (Vite + React + Tailwind + Runway tokens). Process v4 lives at `/process-v4` (Storybook DLS components, v3 kept to compare).
 
 ## Run as its own app
 
@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:5173/process-v3
+Open http://127.0.0.1:5173/process-v4
 
 ## Bring into another repo
 
@@ -33,24 +33,24 @@ cd tempo-prototype && npm install && npm run dev
 6. Mount the route:
 
 ```tsx
-<Route path="process-v3" element={<ProcessV3Page />} />
+<Route path="process-v4" element={<ProcessV4Page />} />
 ```
 
-Process nav currently points at `/process-v3` (`src/components/SideNav.tsx`). Wrap with `AppStateProvider` from `src/lib/app-state.tsx` if the shell is not copied.
+Process nav currently points at `/process-v4` (`src/components/SideNav.tsx`). Wrap with `AppStateProvider` from `src/lib/app-state.tsx` if the shell is not copied.
 
-## Process v3 core files
+## Process v4 core files
 
-If you only need the playbook page:
+Playbook rebuilt with local Storybook-matched DLS (`src/dls/`), Runway tokens as fallback:
 
-- `src/pages/ProcessV3.tsx`
+- `src/pages/ProcessV4.tsx`
+- `src/dls/` (Button, Text, chips, Field/Dropdown, Tabs, Drawer, Alert, Badge)
+- `src/components/DocumentPreviewDrawerV4.tsx`
 - `src/lib/tenancy-data.ts`
 - `src/lib/process-guide.ts`
 - `src/lib/app-state.tsx`
-- `src/lib/utils.ts`
-- `src/components/DocumentPreviewDrawer.tsx`
 - `src/index.css` (tokens)
 
-v1 and v2 are included (`/process`, `/process-v2`) so you can still compare.
+v1–v3 stay at `/process`, `/process-v2`, `/process-v3` so you can compare.
 
 ## Notes
 
