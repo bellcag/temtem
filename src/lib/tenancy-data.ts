@@ -7,7 +7,34 @@ export type Unit = {
   tenancyType: "F&B" | "Retail" | "Service" | "Kiosk";
   zone: "Airside" | "Landside";
   company: string;
+  /** Unit-profile facts used to hide/show guide blocks. Defaults apply if omitted. */
+  facesTravellingPax?: boolean;
+  duplex?: boolean;
+  landsideConcessions?: boolean;
+  outgoing?: boolean;
 };
+
+export type UnitProfile = {
+  terminal: string;
+  tenancyType: string;
+  zone: string;
+  facesTravellingPax: boolean;
+  duplex: boolean;
+  landsideConcessions: boolean;
+  outgoing: boolean;
+};
+
+export function unitProfile(unit: Unit): UnitProfile {
+  return {
+    terminal: unit.terminal,
+    tenancyType: unit.tenancyType,
+    zone: unit.zone,
+    facesTravellingPax: unit.facesTravellingPax ?? unit.zone === "Airside",
+    duplex: unit.duplex ?? false,
+    landsideConcessions: unit.landsideConcessions ?? unit.zone === "Landside",
+    outgoing: unit.outgoing ?? false,
+  };
+}
 
 export const TENANT = {
   firstName: "Sarah",
@@ -40,14 +67,19 @@ export const UNITS: Unit[] = [
 
 export type Responsible = "CAG" | "You" | "CAG + You";
 
-/** Who may see this sub-step. Officer always sees every sub-step. */
+/** Who this task belongs to. Role never hides the parent step. */
 export type AudienceRole = "tenant" | "contractor" | "officer";
 export type Audience = AudienceRole | "shared" | AudienceRole[];
 
 export type SubStep = {
   text: string;
+  /** Handoff wording when this task is not the reader’s action. */
+  alsoText?: string;
   tag?: string;
   audience: Audience;
+  seq?: "sequential" | "parallel";
+  /** Nested how-to — shown as “if your works include…”, never as its own rail item. */
+  workIf?: string;
 };
 
 export type Step = {
@@ -90,14 +122,49 @@ export const PHASES: Phase[] = [
             name: "Set Up Systems for Works",
             responsible: "CAG + You",
             what: "Open OneCalendar access for your project team so terminal and unit entry can be approved before works.",
-            whatFor: { tenant: "Open OneCalendar access for your project team so terminal and unit entry can be approved before works.", contractor: "Open OneCalendar access for your project team so terminal and unit entry can be approved before works.", officer: "Open OneCalendar access for your project team so terminal and unit entry can be approved before works." },
+            whatFor: {
+              tenant: "Your contractor applies in OneCalendar. You’ll approve their unit access when the request arrives — you can follow along here.",
+              contractor: "Create your OneCalendar account, then apply for terminal and unit access so you can get on site.",
+              officer: "Create the outlet in OneCalendar, then approve the contractor’s terminal access so the tenant can approve unit entry.",
+            },
             subSteps: [
-              { text: "Create the Tenant, Brand and Outlet records in OneCalendar for this unit.", tag: "Facing Travelling Pax", audience: "officer" },
-              { text: "Create your OneCalendar account so you can apply for access and work permits.", audience: "contractor" },
-              { text: "Apply for terminal access in OneCalendar so you can get on site.", audience: "contractor" },
-              { text: "Your Project Officer will approve the contractor’s terminal access in OneCalendar.", audience: "shared" },
-              { text: "Apply for unit access in OneCalendar.", audience: "contractor" },
-              { text: "Approve the contractor’s unit access in OneCalendar so works can start.", audience: "tenant" },
+              {
+                text: "Create the Tenant, Brand and Outlet records in OneCalendar for this unit.",
+                tag: "Facing Travelling Pax",
+                audience: "officer",
+                seq: "sequential",
+                alsoText: "Your Project Officer creates the Tenant, Brand and Outlet records in OneCalendar for this unit — access starts from there.",
+              },
+              {
+                text: "Create your OneCalendar account so you can apply for access and work permits.",
+                audience: "contractor",
+                seq: "sequential",
+                alsoText: "Your contractor creates a OneCalendar account for access and work permits.",
+              },
+              {
+                text: "Apply for terminal access in OneCalendar so you can get on site.",
+                audience: "contractor",
+                seq: "sequential",
+                alsoText: "Your contractor applies for terminal access in OneCalendar.",
+              },
+              {
+                text: "Approve the contractor’s terminal access in OneCalendar.",
+                audience: "officer",
+                seq: "sequential",
+                alsoText: "Your Project Officer approves the contractor’s terminal access in OneCalendar. You’ll see unit access next.",
+              },
+              {
+                text: "Apply for unit access in OneCalendar.",
+                audience: "contractor",
+                seq: "sequential",
+                alsoText: "Your contractor applies for unit access in OneCalendar. You’ll be asked to approve it.",
+              },
+              {
+                text: "Approve the contractor’s unit access in OneCalendar so works can start.",
+                audience: "tenant",
+                seq: "sequential",
+                alsoText: "The tenant approves unit access in OneCalendar once the contractor’s request arrives.",
+              },
             ],
             people: ["Project Officer", "Contractor", "Tenant"],
             systems: [{ label: "OneCalendar" }],
@@ -108,7 +175,13 @@ export const PHASES: Phase[] = [
             what: "Register front-of-house staff for Quality Service Management where the outlet faces travelling passengers.",
             whatFor: { tenant: "Register your front-of-house staff for Quality Service Management where the outlet faces travelling passengers.", officer: "Register front-of-house staff for Quality Service Management where the outlet faces travelling passengers." },
             subSteps: [
-              { text: "Register your staff for Quality Service Management training, and your Project Officer can guide you.", tag: "Facing Travelling Pax", audience: "tenant" },
+              {
+                text: "Register your staff for Quality Service Management training in the ONE Changi App. Your Project Officer can guide you.",
+                tag: "Facing Travelling Pax",
+                audience: "tenant",
+                seq: "parallel",
+                alsoText: "The tenant registers front-of-house staff for Quality Service Management in the ONE Changi App. Project Officer can guide them.",
+              },
             ],
             people: ["Tenant"],
             systems: [{ label: "ONE Changi App" }, { label: "Quality Service Management" }],
@@ -117,11 +190,32 @@ export const PHASES: Phase[] = [
             name: "Set Up Systems for Operations",
             responsible: "CAG + You",
             what: "Get WebEpic live for your outlet for tenancy ops, and link POS setup with NEC when the unit is Retail or F&B.",
-            whatFor: { tenant: "Get WebEpic live for your outlet for tenancy ops, and link POS setup with NEC when the unit is Retail or F&B.", officer: "Get WebEpic live for your outlet for tenancy ops, and link POS setup with NEC when the unit is Retail or F&B." },
+            whatFor: {
+              tenant: "Your Project Officer will remind you about WebEpic and, for F&B or Retail, loop in NEC for POS.",
+              contractor: "Tenancy ops accounts sit with the tenant and Project Officer — you’ll hear if anything from this step affects site start.",
+              officer: "Remind the tenant about WebEpic, and link NEC for POS when this unit is Retail or F&B.",
+            },
             subSteps: [
-              { text: "Your Project Officer will remind you to submit the WebEpic application via Enterprise Portal.", audience: ["tenant", "officer"] },
-              { text: "Apply for your WebEpic account so tenancy billing and ops tools are ready.", audience: "tenant" },
-              { text: "Your Project Officer will link you with NEC for Point of Sales setup.", tag: "Retail / F&B", audience: ["tenant", "officer"] },
+              {
+                text: "Remind the tenant to submit the WebEpic application via Enterprise Portal.",
+                audience: "officer",
+                seq: "parallel",
+                alsoText: "Your Project Officer will remind you to submit the WebEpic application via Enterprise Portal.",
+              },
+              {
+                text: "Apply for your WebEpic account so tenancy billing and ops tools are ready.",
+                tag: "Landside Concessions Only",
+                audience: "tenant",
+                seq: "parallel",
+                alsoText: "The tenant applies for WebEpic directly when Landside Concessions uses it for this unit.",
+              },
+              {
+                text: "Link the tenant with NEC for Point of Sales setup.",
+                tag: "Retail, F&B Only",
+                audience: "officer",
+                seq: "sequential",
+                alsoText: "Your Project Officer links you with NEC for Point of Sales setup.",
+              },
             ],
             people: ["Project Officer", "Tenant"],
             systems: [{ label: "WebEpic" }, { label: "Point of Sales" }],
@@ -136,19 +230,34 @@ export const PHASES: Phase[] = [
             name: "Kickoff Documents Gathered & Shared",
             responsible: "CAG",
             what: "Assemble base-build and M&E drawings from CAG sources into the kickoff package for this unit.",
-            whatFor: { tenant: "You’ll receive the kickoff pack and drawings from your Project Officer before site requirements are confirmed.", contractor: "You’ll receive the kickoff pack and drawings from the Project Officer before site requirements are confirmed.", officer: "Assemble base-build and M&E drawings from CAG sources into the kickoff package for this unit." },
+            whatFor: {
+              tenant: "You’ll receive the kickoff pack with drawings and unit facts from your Project Officer before site requirements are confirmed.",
+              contractor: "You’ll receive the kickoff pack with drawings and unit facts from the Project Officer before site requirements are confirmed.",
+              officer: "Put the kickoff pack together from whichever CAG source holds this unit — same outcome: drawings and unit facts for kickoff.",
+            },
             subSteps: [
-              { text: "You’ll receive the kickoff pack and drawings from your Project Officer before site requirements are confirmed.", audience: "shared" },
-              { text: "Pull Base Build Drawings from your own set.", audience: "officer" },
-              { text: "Retrieve Base Build Drawings through officers who have Newforma access.", audience: "officer" },
-              { text: "Request Base Build Drawings from Master Planning if you do not have the latest set.", audience: "officer" },
-              { text: "Pull Mechanical and Electrical Drawings from your own set.", audience: "officer" },
-              { text: "Request Mechanical and Electrical Drawings from IFM if you do not have the latest set.", audience: "officer" },
-              { text: "Review the provision list and available drawings.", audience: "officer" },
-              { text: "Share Mechanical and Electrical Drawings with Project Officer.", audience: "officer" },
-              { text: "Share Base Build Drawing with Project Officer.", audience: "officer" },
-              { text: "Share renovation requirements with Project Officer by email if design was shared earlier.", audience: "officer" },
-              { text: "Compile the kickoff package for the tenant.", tag: "Duplex", audience: "officer" },
+              {
+                text: "You’ll receive the kickoff pack with base-build and M&E drawings before site requirements are confirmed.",
+                audience: ["tenant", "contractor"],
+                seq: "parallel",
+                alsoText: "Your Project Officer puts this pack together from CAG sources. You’ll receive the drawings and unit facts for kickoff.",
+              },
+              {
+                text: "Put the pack together from whichever CAG source holds this unit — OneDrive, Newforma, or Master Planning for base build; your set or IFM for M&E. Same outcome: drawings and unit facts for kickoff.",
+                audience: "officer",
+                seq: "parallel",
+              },
+              {
+                text: "IFM and Master Planning send the drawings they hold, and IFM forwards renovation requirements if design was shared earlier.",
+                audience: "officer",
+                seq: "parallel",
+              },
+              {
+                text: "Compile the kickoff package for the tenant.",
+                tag: "Duplex",
+                audience: "officer",
+                seq: "sequential",
+              },
             ],
             people: ["Project Officer", "Integrated Facilities Management", "Master Planning"],
             systems: [{ label: "OneDrive" }, { label: "Newforma" }, { label: "SharePoint" }, { label: "Hard Disk" }, { label: "OneCalendar" }],
@@ -212,23 +321,62 @@ export const PHASES: Phase[] = [
             name: "Onboarding Guidelines Shared",
             responsible: "CAG",
             what: "Send the post-kickoff pack — checklists, access setup and commercial onboarding links for this unit.",
-            whatFor: { tenant: "You’ll receive the kickoff pack and drawings from your Project Officer before site requirements are confirmed.", contractor: "You’ll receive the kickoff pack and drawings from your Project Officer before site requirements are confirmed.", officer: "Send the post-kickoff pack — checklists, access setup and commercial onboarding links for this unit." },
+            whatFor: {
+              tenant: "You’ll receive one post-kickoff email with checklists and access notes. Your Project Officer also sets up staff access and asks for directory details.",
+              contractor: "You’ll get loading-bay access notes after kickoff. The tenant receives the rest of the pack.",
+              officer: "Send one post-kickoff email (checklists, kits, and unit notes), then set up access and commercial onboarding for this unit.",
+            },
             subSteps: [
-              { text: "You’ll receive the post-kickoff pack from your Project Officer with checklists and access setup notes.", audience: "shared" },
-              { text: "Gather kickoff notes, documents and the submission checklist for the post-kickoff email (including the Tenant–Contractor Kit).", tag: "Terminal 3 (Structured Ceiling Permit)", audience: "officer" },
-              { text: "Add renovation requirements into the post-kickoff email.", audience: "officer" },
-              { text: "Add Joint Site Inspection requirements into the post-kickoff email.", audience: "officer" },
-              { text: "Add LONO and FSC / Minor A&A requirements into the post-kickoff email.", tag: "Approval Specific", audience: "officer" },
-              { text: "Add basement loading bay information into the post-kickoff email.", audience: "officer" },
-              { text: "Add the Tenant–Contractor Kit into the post-kickoff email.", audience: "officer" },
-              { text: "You’ll receive the post-kickoff email pack from your Project Officer after kickoff.", audience: ["tenant", "officer"] },
-              { text: "Confirm whether Fire Safety Certificate or Minor Addition & Alteration applies.", audience: "officer" },
-              { text: "Your Project Officer will set up Access Control & Scheduling System account for tenant staff access.", audience: ["tenant", "officer"] },
-              { text: "Your Project Officer will remind you to create Access Control & Scheduling System account for loading bay access.", audience: ["contractor", "officer"] },
-              { text: "Email Viseo to create the tenant’s Salesforce account when Landside Concessions access is available.", audience: "officer" },
-              { text: "Email Changi Rewards to start the tenant portal account setup.", audience: "officer" },
-              { text: "Your Project Officer will request Tenant Directory Taxonomy details from you.", audience: ["tenant", "officer"] },
-              { text: "Start iShopChangi onboarding for the tenant.", audience: "officer" },
+              {
+                text: "You’ll receive one post-kickoff email with checklists, renovation and JSI notes, loading-bay info, and the Tenant–Contractor Kit.",
+                audience: ["tenant", "contractor"],
+                seq: "parallel",
+                alsoText: "Your Project Officer sends one post-kickoff email with checklists and the Tenant–Contractor Kit.",
+              },
+              {
+                text: "Collate and send one post-kickoff email: kickoff notes, submission checklist, renovation and JSI requirements, LONO/FSC where they apply, basement loading-bay info, and the Tenant–Contractor Kit. Add the T3 structured ceiling permit note when it applies.",
+                audience: "officer",
+                seq: "parallel",
+              },
+              {
+                text: "Qualified Person confirms whether Fire Safety Certificate or Minor Addition & Alteration applies.",
+                audience: "officer",
+                seq: "parallel",
+              },
+              {
+                text: "Set up the Access Control & Scheduling System account for tenant staff access.",
+                audience: "officer",
+                seq: "parallel",
+                alsoText: "Your Project Officer sets up Access Control & Scheduling System for tenant staff access.",
+              },
+              {
+                text: "Remind the contractor to create an Access Control & Scheduling System account for loading-bay access.",
+                audience: "officer",
+                seq: "sequential",
+                alsoText: "Your Project Officer will remind you to create an Access Control & Scheduling System account for loading-bay access.",
+              },
+              {
+                text: "Email Viseo to create the tenant’s Salesforce account.",
+                tag: "Landside Concessions Only",
+                audience: "officer",
+                seq: "parallel",
+              },
+              {
+                text: "Email Changi Rewards to start the tenant portal account setup.",
+                audience: "officer",
+                seq: "parallel",
+              },
+              {
+                text: "Request Tenant Directory Taxonomy details from the tenant.",
+                audience: "officer",
+                seq: "parallel",
+                alsoText: "Your Project Officer will request Tenant Directory Taxonomy details from you.",
+              },
+              {
+                text: "Start iShopChangi onboarding for the tenant.",
+                audience: "officer",
+                seq: "parallel",
+              },
             ],
             people: ["Project Officer", "Qualified Person"],
             systems: [{ label: "Access Control & Scheduling System" }, { label: "Salesforce" }, { label: "Changi Rewards" }, { label: "Tenant Directory Taxonomy" }, { label: "iShopChangi" }],
@@ -274,23 +422,107 @@ export const PHASES: Phase[] = [
             name: "Permit Selection & Document Preparation",
             responsible: "CAG + You",
             what: "Confirm permit requirements with the contractor as they select OneCalendar work types.",
-            whatFor: { tenant: "Your contractor selects the required OneCalendar permits; Project Officer confirms what is needed.", contractor: "Select the right OneCalendar work types and permits for the planned works; wait for Project Officer advice if unsure.", officer: "Confirm permit requirements with the contractor as they select OneCalendar work types." },
+            whatFor: {
+              tenant: "Your contractor applies in OneCalendar. Your Project Officer will tell them which permits this unit needs — you can follow along here.",
+              contractor: "Your Project Officer will tell you which permits this unit needs. Select Tenancy Project in OneCalendar, then fill the permits that match your works.",
+              officer: "Advise the contractor which permits this unit needs, then they select Tenancy Project in OneCalendar and fill the matching permits.",
+            },
             subSteps: [
-              { text: "Your Project Officer will confirm which permits the contractor should select in OneCalendar.", audience: ["tenant", "officer"] },
-              { text: "Your Project Officer will advise the contractor which permits are required for the planned works.", audience: ["contractor", "officer"] },
-              { text: "Select the Tenancy Project work type in OneCalendar for the works you planned.", audience: "contractor" },
-              { text: "Enter the Tenancy Project work details in OneCalendar.", audience: "contractor" },
-              { text: "Select the Renovation (Terminal) project type in OneCalendar.", audience: "contractor" },
-              { text: "Add a Ceiling permit in OneCalendar if your works need it.", audience: "contractor" },
-              { text: "Add a Fire Alarm Isolation Permit in OneCalendar if your works need it.", audience: "contractor" },
-              { text: "Add a Hot Work Permit in OneCalendar if your works need it.", audience: "contractor" },
-              { text: "Add the Archi Changes / Authority Submission & Approvals permit if your works need it.", audience: "contractor" },
-              { text: "Add an MEP Changes permit in OneCalendar if your works need it.", audience: "contractor" },
-              { text: "Add the Structured Cabling (T3 tenant telephone lines) permit if your works need it.", audience: "contractor" },
-              { text: "Add the Structured Cabling Indoor/Outdoor permit if your works need it.", audience: "contractor" },
-              { text: "Add a Telco Cabling permit in OneCalendar if your works need it.", audience: "contractor" },
-              { text: "Add a Catwalk Access permit in OneCalendar if you are working in T4.", tag: "Terminal 4 only", audience: "contractor" },
-              { text: "Add a Renovation (Terminal — Additional) permit if your works need it.", audience: "contractor" },
+              {
+                text: "Advise the contractor which permits this unit needs for the planned works.",
+                audience: "officer",
+                seq: "sequential",
+                alsoText: "Your Project Officer will tell your contractor which permits this unit needs — you can follow along here.",
+              },
+              {
+                text: "Select the Tenancy Project work type in OneCalendar. Applicable permit types are pre-selected from the planned works.",
+                audience: "contractor",
+                seq: "sequential",
+                alsoText: "Your contractor selects Tenancy Project in OneCalendar. Your Project Officer will tell them which permits this unit needs.",
+              },
+              {
+                text: "Fill Tenancy Project details in OneCalendar (project title and supporting documents).",
+                audience: "contractor",
+                seq: "parallel",
+                alsoText: "Your contractor fills Tenancy Project details in OneCalendar.",
+              },
+              {
+                text: "Fill the Renovation (Terminal) permit in OneCalendar (work period and supporting documents).",
+                audience: "contractor",
+                seq: "parallel",
+                alsoText: "Your contractor fills the Renovation (Terminal) permit in OneCalendar.",
+              },
+              {
+                text: "Fill the Ceiling permit in OneCalendar (work period and supporting documents).",
+                audience: "contractor",
+                seq: "parallel",
+                workIf: "ceiling works",
+                alsoText: "If the works include ceiling, your contractor fills the Ceiling permit in OneCalendar.",
+              },
+              {
+                text: "Fill the Fire Alarm Isolation permit in OneCalendar (basic permit information and the Joint Site Inspection form when isolation applies).",
+                audience: "contractor",
+                seq: "parallel",
+                workIf: "fire alarm isolation",
+                alsoText: "If the works need fire alarm isolation, your contractor fills that permit in OneCalendar.",
+              },
+              {
+                text: "Fill the Hot Work permit in OneCalendar (work period and Hot Work checklist).",
+                audience: "contractor",
+                seq: "parallel",
+                workIf: "hot work",
+                alsoText: "If the works include hot work, your contractor fills the Hot Work permit in OneCalendar.",
+              },
+              {
+                text: "Fill the Archi Changes / Authority Submission & Approvals permit in OneCalendar (location and supporting documents).",
+                audience: "contractor",
+                seq: "parallel",
+                workIf: "architectural changes",
+                alsoText: "If the works include architectural changes, your contractor fills that permit in OneCalendar.",
+              },
+              {
+                text: "Fill the MEP Changes permit in OneCalendar (location and supporting documents).",
+                audience: "contractor",
+                seq: "parallel",
+                workIf: "MEP changes",
+                alsoText: "If the works include MEP changes, your contractor fills that permit in OneCalendar.",
+              },
+              {
+                text: "Fill the Structured Cabling (T3 tenant telephone lines) permit in OneCalendar (location and supporting documents).",
+                audience: "contractor",
+                seq: "parallel",
+                workIf: "structured cabling",
+                alsoText: "If the works include T3 tenant telephone cabling, your contractor fills that permit in OneCalendar.",
+              },
+              {
+                text: "Fill the Structured Cabling Indoor/Outdoor permit in OneCalendar (location and supporting documents).",
+                audience: "contractor",
+                seq: "parallel",
+                workIf: "indoor/outdoor cabling",
+                alsoText: "If the works include indoor or outdoor cabling, your contractor fills that permit in OneCalendar.",
+              },
+              {
+                text: "Fill the Telco Cabling permit in OneCalendar (work period and supporting documents).",
+                audience: "contractor",
+                seq: "parallel",
+                workIf: "telco cabling",
+                alsoText: "If the works include telco cabling, your contractor fills that permit in OneCalendar.",
+              },
+              {
+                text: "Fill the Catwalk Access permit in OneCalendar (worker name list and supporting documents).",
+                tag: "Terminal 4 only",
+                audience: "contractor",
+                seq: "parallel",
+                workIf: "catwalk access",
+                alsoText: "If this is a T4 unit and the works need catwalk access, your contractor fills that permit in OneCalendar.",
+              },
+              {
+                text: "Fill the Renovation (Terminal — Additional) permit in OneCalendar (work period and supporting documents).",
+                audience: "contractor",
+                seq: "parallel",
+                workIf: "additional terminal renovation",
+                alsoText: "If additional terminal renovation applies, your contractor fills that permit in OneCalendar.",
+              },
             ],
             people: ["Project Officer", "Contractor"],
             systems: [{ label: "OneCalendar" }],
@@ -339,7 +571,7 @@ export const PHASES: Phase[] = [
               { text: "IFM will review all applications submitted in OneCalendar.", audience: ["contractor", "officer"] },
               { text: "Revise the documents and resubmit in OneCalendar if a reviewer asks you to refile.", audience: "contractor" },
               { text: "IFM will approve the submissions.", audience: ["contractor", "officer"] },
-              { text: "You’ll get the Permit to Work in OneCalendar when CAG finishes review.", audience: "shared" },
+              { text: "OneCalendar issues the Permit to Work to the contractor when reviews are complete.", audience: "shared" },
             ],
             people: ["Project Officer", "Building Maintenance Contractor", "Contractor", "Airport Emergency & Safety", "Integrated Facilities Management", "System"],
             systems: [{ label: "OneCalendar" }, { label: "WhatsApp" }, { label: "Teams" }],
@@ -760,6 +992,13 @@ export const PHASES: Phase[] = [
     ],
   },
 ];
+
+export type DocType =
+  | "Policy & Requirements"
+  | "Reference Document"
+  | "Design Guideline"
+  | "Template & Form"
+  | "Process Guide";
 
 export type DocItem = {
   id: string;

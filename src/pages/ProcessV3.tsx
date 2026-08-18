@@ -4,9 +4,11 @@ import { ExternalLink, FileText, MapPin, Users } from "lucide-react";
 import { PHASES, UNITS, type Phase, type Unit } from "@/lib/tenancy-data";
 import { useApp, type Role } from "@/lib/app-state";
 import {
-  alsoLine,
   classifyStage,
+  displayText,
   docsForStep,
+  groupGuideBlocks,
+  phasesForUnit,
   stepWhat,
   type ClassifiedStep,
 } from "@/lib/process-guide";
@@ -54,7 +56,6 @@ function stepFocusKey(stageName: string, stepName: string) {
 }
 
 type JourneyItem = {
-  kind: "you" | "context";
   stageName: string;
   classified: ClassifiedStep;
 };
@@ -75,8 +76,6 @@ export function ProcessV3Page() {
     units,
     effectiveUnit,
     isUnscoped,
-    processView,
-    setProcessView,
     setOfficerSelection,
   } = useApp();
   const [params] = useSearchParams();
@@ -119,11 +118,6 @@ export function ProcessV3Page() {
     if (saved && PHASES.some((p) => p.id === saved)) setActiveId(saved);
   }, [params]);
 
-  useEffect(() => {
-    const next = !isOfficer ? "my-unit" : isUnscoped ? "full" : "my-unit";
-    if (processView !== next) setProcessView(next);
-  }, [isUnscoped, isOfficer, processView, setProcessView]);
-
   const activeJob = CONTRACTOR_JOBS.find((j) => j.id === jobId) ?? CONTRACTOR_JOBS[0];
 
   const ctxUnit: Unit = useMemo(() => {
@@ -132,8 +126,7 @@ export function ProcessV3Page() {
     return unit;
   }, [isContractor, isOfficer, activeJob, effectiveUnit, unit]);
 
-  const needsContext = isOfficer && isUnscoped && processView !== "full";
-  const showFull = isOfficer && (processView === "full" || isUnscoped);
+  const needsContext = isOfficer && isUnscoped;
 
   const selectPhase = (id: Phase["id"]) => {
     setActiveId(id);
@@ -151,89 +144,45 @@ export function ProcessV3Page() {
     window.localStorage.setItem(LS_JOB, id);
   };
 
-  const active = PHASES.find((p) => p.id === activeId)!;
+  const visiblePhases = useMemo(
+    () => (needsContext ? PHASES : phasesForUnit(ctxUnit)),
+    [needsContext, ctxUnit],
+  );
+
+  useEffect(() => {
+    if (visiblePhases.some((p) => p.id === activeId)) return;
+    const fallback = visiblePhases[0]?.id ?? "setup";
+    setActiveId(fallback);
+    window.localStorage.setItem(LS_KEY, fallback);
+  }, [visiblePhases, activeId]);
+
+  const active = visiblePhases.find((p) => p.id === activeId) ?? visiblePhases[0] ?? PHASES[0];
 
   const stageBlocks = useMemo(() => {
+    if (needsContext) return [];
     return active.stages
       .map((stage, si) => {
-        const { yours, also } = classifyStage(
-          stage,
-          role,
-          ctxUnit.tenancyType,
-          ctxUnit.terminal,
-          showFull,
-        );
-        return { stage, si, yours, also };
+        const { steps } = classifyStage(stage, role, ctxUnit);
+        return { stage, si, steps };
       })
-      .filter((b) => b.yours.length > 0 || b.also.length > 0);
-  }, [active, role, ctxUnit.tenancyType, ctxUnit.terminal, showFull]);
+      .filter((b) => b.steps.length > 0);
+  }, [active, role, ctxUnit, needsContext]);
 
-  const yourStepsFlat = useMemo(() => {
-    const list: { stageName: string; classified: ClassifiedStep }[] = [];
-    for (const b of stageBlocks) {
-      for (const c of b.yours) list.push({ stageName: b.stage.name, classified: c });
-    }
-    return list;
-  }, [stageBlocks]);
-
-  /** Stage order, original step order — action steps and notes stay in the journey. */
   const journeyItems = useMemo(() => {
-    const list: {
-      kind: "you" | "context";
-      stageName: string;
-      classified: ClassifiedStep;
-    }[] = [];
+    const list: JourneyItem[] = [];
     for (const b of stageBlocks) {
-      for (const step of b.stage.steps) {
-        const yoursHit = b.yours.find((c) => c.step.name === step.name);
-        const alsoHit = b.also.find((c) => c.step.name === step.name);
-        if (yoursHit) {
-          list.push({
-            kind: "you",
-            stageName: b.stage.name,
-            classified: yoursHit,
-          });
-        } else if (alsoHit) {
-          list.push({
-            kind: "context",
-            stageName: b.stage.name,
-            classified: alsoHit,
-          });
-        }
+      for (const classified of b.steps) {
+        list.push({ stageName: b.stage.name, classified });
       }
     }
     return list;
   }, [stageBlocks]);
 
-  const startHere = yourStepsFlat[0] ?? null;
-
-  /** All stages in the active phase (phase structure), plus path counts. */
-  const phaseStageMap = useMemo(() => {
-    return active.stages.map((stage, si) => {
-      const { yours, also } = classifyStage(
-        stage,
-        role,
-        ctxUnit.tenancyType,
-        ctxUnit.terminal,
-        showFull,
-      );
-      return {
-        index: si + 1,
-        name: stage.name,
-        purpose: stage.purpose,
-        yourCount: yours.length,
-        contextOnly: yours.length === 0 && also.length > 0,
-        hidden: yours.length === 0 && also.length === 0,
-      };
-    });
-  }, [active, role, ctxUnit.tenancyType, ctxUnit.terminal, showFull]);
-
-  const visibleStageCount = phaseStageMap.filter((s) => !s.hidden).length;
+  const startHere = journeyItems[0] ?? null;
 
   const navSteps = useMemo(
     () =>
       journeyItems.map((item) => ({
-        kind: item.kind,
         stageName: item.stageName,
         stepName: item.classified.step.name,
       })),
@@ -241,7 +190,7 @@ export function ProcessV3Page() {
   );
 
   const navKeySig = navSteps
-    .map((s) => `${s.kind}:${s.stageName}::${s.stepName}`)
+    .map((s) => `${s.stageName}::${s.stepName}`)
     .join("/");
 
   // 1:1 focus — one guide card at a time (defaults to first in phase)
@@ -269,12 +218,10 @@ export function ProcessV3Page() {
   };
 
   const roleBlurb = isContractor
-    ? "Static guide for this job (Setup, Build, Exit) — not live status."
+    ? "Guide for this job — what happens on this unit, and your part in it."
     : isOfficer
-      ? showFull
-        ? "Full process catalogue for coaching — not live status."
-        : "Unit guide for coaching — not live status."
-      : "Static playbook for this outlet — not live status.";
+      ? "Guide for this unit — the same map the tenant and contractor see, with full depth."
+      : "Guide for this outlet — what you’ll receive, who does it, and what to do when it arrives.";
 
   return (
     <div className="dls-page">
@@ -307,8 +254,7 @@ export function ProcessV3Page() {
             </div>
             {needsContext ? (
               <p className="mt-2 text-sm text-grey-600 desktop:text-base desktop:leading-5">
-                Choose a unit below (or switch to Full process) so this guide can
-                filter to Airside F&amp;B / Retail.
+                Choose a unit below so this guide can follow that unit’s map — not every possible branch.
               </p>
             ) : (
               <>
@@ -369,37 +315,6 @@ export function ProcessV3Page() {
                 </select>
               </label>
             )}
-
-            {isOfficer && (
-              <div className="inline-flex w-full gap-1 rounded-[var(--radius-sm)] border border-grey-200 bg-grey-25 p-1 desktop:w-auto">
-                <button
-                  type="button"
-                  disabled={isUnscoped}
-                  onClick={() => !isUnscoped && setProcessView("my-unit")}
-                  className={cn(
-                    "flex-1 rounded-[var(--radius-sm)] px-3 py-2 text-xs font-bold transition desktop:flex-none",
-                    processView === "my-unit"
-                      ? "bg-purple-600 text-white"
-                      : "text-grey-500 hover:text-black",
-                    isUnscoped && "cursor-not-allowed opacity-50",
-                  )}
-                >
-                  My unit
-                </button>
-                <button
-                  type="button"
-                  onClick={() => setProcessView("full")}
-                  className={cn(
-                    "flex-1 rounded-[var(--radius-sm)] px-3 py-2 text-xs font-bold transition desktop:flex-none",
-                    processView === "full"
-                      ? "bg-purple-600 text-white"
-                      : "text-grey-500 hover:text-black",
-                  )}
-                >
-                  Full process
-                </button>
-              </div>
-            )}
           </div>
         </div>
 
@@ -443,7 +358,7 @@ export function ProcessV3Page() {
               {/* Mobile: compact horizontal phases + steps below */}
               <div className="tablet:hidden">
                 <ol className="flex gap-2 overflow-x-auto px-3 py-3">
-                  {PHASES.map((p, i) => {
+                  {visiblePhases.map((p, i) => {
                     const isActive = p.id === activeId;
                     return (
                       <li key={p.id} className="min-w-0 shrink-0">
@@ -473,14 +388,6 @@ export function ProcessV3Page() {
                           <span className="text-sm font-bold leading-[18px]">
                             {p.name}
                           </span>
-                          <span
-                            className={cn(
-                              "text-xs font-bold",
-                              isActive ? "text-purple-700" : "text-grey-500",
-                            )}
-                          >
-                            · {p.stages.length}
-                          </span>
                         </button>
                       </li>
                     );
@@ -489,7 +396,6 @@ export function ProcessV3Page() {
                 <div className="border-t border-purple-100 bg-purple-100/40 px-3 py-3">
                   <PhaseStepsPanel
                     active={active}
-                    visibleStageCount={visibleStageCount}
                     navSteps={navSteps}
                     focusedStep={focusedStep}
                     onSelectStep={scrollToStep}
@@ -499,7 +405,7 @@ export function ProcessV3Page() {
 
               {/* Tablet+: phases with steps anchored under the selected phase */}
               <ol className="hidden tablet:block">
-                {PHASES.map((p, i) => {
+                {visiblePhases.map((p, i) => {
                   const isActive = p.id === activeId;
                   return (
                     <li key={p.id}>
@@ -538,17 +444,6 @@ export function ProcessV3Page() {
                           >
                             {p.name}
                           </span>
-                          <span
-                            className={cn(
-                              "block text-xs font-semibold transition",
-                              isActive
-                                ? "text-purple-600"
-                                : "text-grey-400 group-hover:text-purple-600",
-                            )}
-                          >
-                            {p.stages.length} stage
-                            {p.stages.length === 1 ? "" : "s"}
-                          </span>
                         </span>
                         <span
                           aria-hidden
@@ -567,7 +462,6 @@ export function ProcessV3Page() {
                         <div className="border-l-2 border-l-purple-600 bg-purple-100/40 px-3 py-3 pl-4">
                           <PhaseStepsPanel
                             active={active}
-                            visibleStageCount={visibleStageCount}
                             navSteps={navSteps}
                             focusedStep={focusedStep}
                             onSelectStep={scrollToStep}
@@ -584,12 +478,15 @@ export function ProcessV3Page() {
 
         {/* Right: guide content */}
         <div className="min-w-0">
-          {!startHere && stageBlocks.every((b) => b.also.length === 0) && (
+          {needsContext && (
             <div className="rounded-[var(--radius-md)] border border-grey-100 bg-white px-4 py-8 text-center text-sm text-grey-500 tablet:px-6">
-              Nothing in this guide for {active.name}.
-              {isContractor && active.id === "operate"
-                ? " Operate stays with the tenant account — this works guide covers Setup, Build and Exit."
-                : null}
+              Choose a unit to open this guide. The map follows that unit — not a mix of every branch.
+            </div>
+          )}
+
+          {!needsContext && !startHere && (
+            <div className="rounded-[var(--radius-md)] border border-grey-100 bg-white px-4 py-8 text-center text-sm text-grey-500 tablet:px-6">
+              Nothing in this guide for {active.name} on this unit.
             </div>
           )}
 
@@ -597,55 +494,28 @@ export function ProcessV3Page() {
             <ol className="relative flex flex-col">
               {journeyItems.map((item, idx) => {
                 const isLast = idx === journeyItems.length - 1;
-                const nextKind = journeyItems[idx + 1]?.kind;
                 const prevStage = journeyItems[idx - 1]?.stageName;
                 const stepIndex = idx + 1;
-                if (item.kind === "you") {
-                  return (
-                    <PathStep
-                      key={`${item.stageName}-${item.classified.step.name}`}
-                      classified={item.classified}
-                      stageName={item.stageName}
-                      showStage={item.stageName !== prevStage}
-                      stepFocused={
-                        stepFocusKey(
-                          item.stageName,
-                          item.classified.step.name,
-                        ) === focusedStep
-                      }
-                      index={stepIndex}
-                      role={role}
-                      showFull={showFull}
-                      tenancyType={ctxUnit.tenancyType}
-                      terminal={ctxUnit.terminal}
-                      zone={ctxUnit.zone}
-                      onPreviewDoc={setPreviewDocId}
-                      onFocusStep={focusStep}
-                      isLast={isLast}
-                      nextIsNote={nextKind === "context"}
-                    />
-                  );
-                }
                 return (
-                  <ContextNote
+                  <PathStep
                     key={`${item.stageName}-${item.classified.step.name}`}
+                    classified={item.classified}
                     stageName={item.stageName}
-                    title={item.classified.step.name}
-                    summary={alsoLine(item.classified, role)}
-                    tenancyType={ctxUnit.tenancyType}
-                    terminal={ctxUnit.terminal}
-                    zone={ctxUnit.zone}
-                    onPreviewDoc={setPreviewDocId}
+                    showStage={item.stageName !== prevStage}
                     stepFocused={
                       stepFocusKey(
                         item.stageName,
                         item.classified.step.name,
                       ) === focusedStep
                     }
+                    index={stepIndex}
+                    role={role}
+                    tenancyType={ctxUnit.tenancyType}
+                    terminal={ctxUnit.terminal}
+                    zone={ctxUnit.zone}
+                    onPreviewDoc={setPreviewDocId}
                     onFocusStep={focusStep}
                     isLast={isLast}
-                    nextIsNote={nextKind === "context"}
-                    index={stepIndex}
                   />
                 );
               })}
@@ -664,15 +534,12 @@ export function ProcessV3Page() {
 
 function PhaseStepsPanel({
   active,
-  visibleStageCount,
   navSteps,
   focusedStep,
   onSelectStep,
 }: {
   active: Phase;
-  visibleStageCount: number;
   navSteps: {
-    kind: "you" | "context";
     stageName: string;
     stepName: string;
   }[];
@@ -684,18 +551,13 @@ function PhaseStepsPanel({
       <p className="text-sm leading-[18px] text-grey-600 desktop:leading-5">
         {active.description}
       </p>
-      {visibleStageCount < active.stages.length && (
-        <p className="mt-2 text-xs font-semibold text-purple-700">
-          {visibleStageCount} of {active.stages.length} stages in this guide
-        </p>
-      )}
 
       <p className="mt-3 text-[10px] font-bold uppercase tracking-wider text-grey-500">
         Steps in {active.name}
       </p>
       {navSteps.length === 0 ? (
         <p className="mt-2 text-sm text-grey-500">
-          No guide steps in this phase for your unit.
+          No guide steps in this phase for this unit.
         </p>
       ) : (
         <ol
@@ -705,7 +567,6 @@ function PhaseStepsPanel({
           {navSteps.map((item, idx) => {
             const key = stepFocusKey(item.stageName, item.stepName);
             const isFocused = key === focusedStep;
-            const isNote = item.kind === "context";
             return (
               <li key={key}>
                 <button
@@ -715,20 +576,15 @@ function PhaseStepsPanel({
                   className={cn(
                     "group flex w-full items-start gap-2 rounded-[var(--radius-sm)] border-l-2 px-2.5 py-2 text-left transition",
                     isFocused
-                      ? isNote
-                        ? "border-l-grey-400 bg-white/90 text-grey-800"
-                        : "border-l-purple-600 bg-white/90 text-purple-800 shadow-[var(--shadow-light-bg)]"
+                      ? "border-l-purple-600 bg-white/90 text-purple-800 shadow-[var(--shadow-light-bg)]"
                       : "border-l-transparent text-grey-700 hover:bg-white/60 hover:text-purple-800",
                   )}
                 >
                   <span
                     className={cn(
-                      "mt-0.5 grid h-5 w-5 shrink-0 place-items-center text-[10px] font-black",
-                      isNote ? "rounded-[var(--radius-sm)]" : "rounded-full",
+                      "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-black",
                       isFocused
-                        ? isNote
-                          ? "border border-grey-400 bg-white text-grey-700"
-                          : "bg-purple-600 text-white"
+                        ? "bg-purple-600 text-white"
                         : "border border-grey-200 bg-white text-grey-500 group-hover:border-purple-300 group-hover:text-purple-700",
                     )}
                   >
@@ -747,9 +603,7 @@ function PhaseStepsPanel({
                       className={cn(
                         "mt-0.5 block text-[11px] font-semibold uppercase tracking-wider",
                         isFocused
-                          ? isNote
-                            ? "text-grey-500"
-                            : "text-purple-600"
+                          ? "text-purple-600"
                           : "text-grey-500 group-hover:text-purple-600",
                       )}
                     >
@@ -766,6 +620,94 @@ function PhaseStepsPanel({
   );
 }
 
+function GuideBlockList({
+  subs,
+  mine,
+  role,
+}: {
+  subs: ClassifiedStep["mine"];
+  mine: boolean;
+  role: Role;
+}) {
+  const { sequential, parallel, nested } = groupGuideBlocks(subs);
+  return (
+    <div className="space-y-4">
+      {sequential.length > 0 && (
+        <ol className="space-y-3">
+          {sequential.map((s, i) => (
+            <li key={`seq-${i}`} className="flex items-start gap-3">
+              <span
+                className={cn(
+                  "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-black",
+                  mine
+                    ? "border border-purple-200 bg-purple-100 text-purple-700"
+                    : "border border-grey-200 bg-white text-grey-600",
+                )}
+              >
+                {i + 1}
+              </span>
+              <span
+                className={cn(
+                  "min-w-0 text-sm leading-relaxed",
+                  mine ? "text-black" : "text-grey-600",
+                )}
+              >
+                {displayText(s, mine, role)}
+              </span>
+            </li>
+          ))}
+        </ol>
+      )}
+      {parallel.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
+            Also in this step
+          </p>
+          <ul className="mt-3 space-y-3">
+            {parallel.map((s, i) => (
+              <li key={`par-${i}`} className="flex items-start gap-3">
+                <span className="mt-2 h-1.5 w-1.5 shrink-0 rounded-full bg-grey-300" />
+                <span
+                  className={cn(
+                    "min-w-0 text-sm leading-relaxed",
+                    mine ? "text-black" : "text-grey-600",
+                  )}
+                >
+                  {displayText(s, mine, role)}
+                </span>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+      {nested.length > 0 && (
+        <div>
+          <p className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
+            If your works include…
+          </p>
+          <ul className="mt-3 space-y-3">
+            {nested.map((s, i) => (
+              <li key={`nest-${i}`} className="rounded-[var(--radius-sm)] bg-grey-25 px-3 py-2">
+                <p className="text-[11px] font-bold uppercase tracking-wider text-purple-700">
+                  {s.workIf}
+                </p>
+                <p
+                  className={cn(
+                    "mt-1 text-sm leading-relaxed",
+                    mine ? "text-black" : "text-grey-600",
+                  )}
+                >
+                  {displayText(s, mine, role)}
+                </p>
+              </li>
+            ))}
+          </ul>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function PathStep({
   classified,
   stageName,
@@ -773,14 +715,12 @@ function PathStep({
   stepFocused,
   index,
   role,
-  showFull,
   tenancyType,
   terminal,
   zone,
   onPreviewDoc,
   onFocusStep,
   isLast,
-  nextIsNote,
 }: {
   classified: ClassifiedStep;
   stageName: string;
@@ -788,14 +728,12 @@ function PathStep({
   stepFocused: boolean;
   index: number;
   role: Role;
-  showFull: boolean;
   tenancyType: string;
   terminal: string;
   zone: string;
   onPreviewDoc: (id: string) => void;
   onFocusStep: (stageName: string, stepName: string) => void;
   isLast: boolean;
-  nextIsNote: boolean;
 }) {
   const { step, mine, others } = classified;
   const people = step.people ?? [];
@@ -829,26 +767,10 @@ function PathStep({
     return cleaned.filter((s) => !internal.has(s.label.toLowerCase()));
   }, [step.systems, mine, others, role]);
 
-  /** One reading order: your moves first, others woven in the same list. */
-  const flow = useMemo(() => {
-    const rows: {
-      kind: "you" | "others";
-      text: string;
-      tag?: string;
-    }[] = [];
-    for (const s of mine) rows.push({ kind: "you", text: s.text, tag: s.tag });
-    for (const s of others)
-      rows.push({ kind: "others", text: s.text, tag: s.tag });
-    return rows;
-  }, [mine, others]);
+  const alsoOpen = role === "officer" || mine.length === 0;
 
   return (
-    <li
-      className={cn(
-        "relative pl-10",
-        !isLast && (nextIsNote ? "pb-4" : "pb-8"),
-      )}
-    >
+    <li className={cn("relative pl-10", !isLast && "pb-8")}>
       <div
         className={cn(
           "pointer-events-none absolute top-0 left-[13px] w-0.5",
@@ -903,39 +825,37 @@ function PathStep({
           </p>
         </header>
 
-        {flow.length > 0 && (
+        {mine.length > 0 && (
           <div className="pt-4">
-            <FieldLabel>In this guide step</FieldLabel>
-            <ul className="mt-3 space-y-3">
-              {flow.map((row, i) => (
-                <li key={i} className="flex items-start gap-3">
-                  <span
-                    className={cn(
-                      "mt-0.5 shrink-0 rounded-[var(--radius-sm)] px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider",
-                      row.kind === "you"
-                        ? "bg-purple-100 text-purple-700"
-                        : "bg-grey-75 text-grey-600",
-                    )}
-                  >
-                    {row.kind === "you" ? "You" : "Others"}
-                  </span>
-                  <span
-                    className={cn(
-                      "min-w-0 text-sm leading-relaxed",
-                      row.kind === "you" ? "text-black" : "text-grey-600",
-                    )}
-                  >
-                    {row.text}
-                    <TagCallout
-                      tag={row.tag}
-                      showTag={showFull}
-                      tenancyType={tenancyType}
-                    />
-                  </span>
-                </li>
-              ))}
-            </ul>
+            <FieldLabel>Your part</FieldLabel>
+            <div className="mt-3">
+              <GuideBlockList subs={mine} mine role={role} />
+            </div>
           </div>
+        )}
+
+        {others.length > 0 && (
+          mine.length === 0 ? (
+            <div className="pt-4">
+              <FieldLabel>How this works</FieldLabel>
+              <div className="mt-3">
+                <GuideBlockList subs={others} mine={false} role={role} />
+              </div>
+            </div>
+          ) : (
+            <details
+              className="mt-4 border-t border-grey-75 pt-4"
+              open={alsoOpen}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <summary className="cursor-pointer text-[10px] font-bold uppercase tracking-wider text-grey-500">
+                Also happening
+              </summary>
+              <div className="mt-3">
+                <GuideBlockList subs={others} mine={false} role={role} />
+              </div>
+            </details>
+          )
         )}
 
         {(people.length > 0 ||
@@ -1018,125 +938,6 @@ function PathStep({
   );
 }
 
-function ContextNote({
-  stageName,
-  title,
-  summary,
-  tenancyType,
-  terminal,
-  zone,
-  onPreviewDoc,
-  stepFocused,
-  onFocusStep,
-  isLast,
-  nextIsNote,
-  index,
-}: {
-  stageName: string;
-  title: string;
-  summary: string;
-  tenancyType: string;
-  terminal: string;
-  zone: string;
-  onPreviewDoc: (id: string) => void;
-  stepFocused: boolean;
-  onFocusStep: (stageName: string, stepName: string) => void;
-  isLast: boolean;
-  nextIsNote: boolean;
-  index: number;
-}) {
-  const guideDocs = useMemo(
-    () => docsForStep(title, tenancyType, terminal, zone),
-    [title, tenancyType, terminal, zone],
-  );
-
-  return (
-    <li
-      className={cn(
-        "relative pl-10",
-        !isLast && (nextIsNote ? "pb-2" : "pb-8"),
-      )}
-    >
-      <div
-        className={cn(
-          "pointer-events-none absolute top-0 left-[13px] w-0.5 bg-grey-100",
-          isLast ? "h-5" : "bottom-0",
-        )}
-      />
-      <span
-        className={cn(
-          "absolute top-0 left-0 z-10 grid place-items-center rounded-[var(--radius-sm)] bg-white text-[11px] font-black transition",
-          stepFocused
-            ? "h-7 w-7 border-2 border-grey-400 text-grey-700 shadow-[0_0_0_3px_var(--color-grey-75)]"
-            : "h-6 w-6 border border-grey-200 text-grey-500",
-        )}
-        title={`Step ${index}`}
-      >
-        <span className="sr-only">Step </span>
-        {index}
-      </span>
-      <div
-        id={stepDomId(stageName, title)}
-        tabIndex={0}
-        onClick={() => onFocusStep(stageName, title)}
-        className={cn(
-          "scroll-mt-20 cursor-pointer rounded-[var(--radius-sm)] px-3 py-2.5 outline-none transition desktop:scroll-mt-8",
-          stepFocused ? "bg-grey-75" : "bg-grey-50 hover:bg-grey-75",
-        )}
-      >
-        <p className="text-[10px] font-bold uppercase tracking-wider text-grey-400">
-          {stageName}
-        </p>
-        <p className="mt-0.5 text-sm font-semibold leading-[18px] text-grey-700">
-          {title}
-        </p>
-        <p className="mt-1 text-xs leading-4 text-grey-500">{summary}</p>
-        {guideDocs.length > 0 && (
-          <ul className="mt-2 flex flex-col gap-1">
-            {guideDocs.map((d) => (
-              <li key={d.id}>
-                <button
-                  type="button"
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    onPreviewDoc(d.id);
-                  }}
-                  className="flex w-full items-center gap-1.5 text-left text-xs font-bold text-grey-500 hover:text-grey-700"
-                >
-                  <FileText className="h-3 w-3 shrink-0" />
-                  <span className="min-w-0 truncate">{d.name}</span>
-                </button>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
-    </li>
-  );
-}
-
-function TagCallout({
-  tag,
-  showTag,
-  tenancyType,
-}: {
-  tag?: string;
-  showTag: boolean;
-  tenancyType: string;
-}) {
-  if (!tag) return null;
-  const categoryCallout =
-    !showTag &&
-    (tag.toLowerCase().includes("f&b") ||
-      tag.toLowerCase().includes("retail"));
-  if (!showTag && !categoryCallout) return null;
-  return (
-    <span className="ml-2 inline-flex items-center rounded-[var(--radius-sm)] bg-warning-100 px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider text-warning-600">
-      {showTag ? tag : `${tenancyType} relevant`}
-    </span>
-  );
-}
-
 function FieldLabel({ children }: { children: React.ReactNode }) {
   return (
     <div className="inline-flex items-center gap-2 text-[10px] font-bold uppercase tracking-wider text-grey-500">
@@ -1144,4 +945,3 @@ function FieldLabel({ children }: { children: React.ReactNode }) {
     </div>
   );
 }
-

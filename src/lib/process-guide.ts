@@ -5,72 +5,138 @@ import type {
   Stage,
   Step,
   SubStep,
+  Unit,
 } from "@/lib/tenancy-data";
-import { DOCUMENTS } from "@/lib/tenancy-data";
+import { DOCUMENTS, PHASES, unitProfile, type UnitProfile } from "@/lib/tenancy-data";
 import type { Role } from "@/lib/app-state";
 
 export function audienceForRole(role: Role, audience: Audience): boolean {
-  if (role === "officer") return true;
   if (audience === "shared") return true;
   if (Array.isArray(audience)) return audience.includes(role);
-  if (role === "tenant") return audience === "tenant";
-  if (role === "contractor") return audience === "contractor";
+  return audience === role;
+}
+
+function isWorkTag(tag: string): boolean {
+  const t = tag.toLowerCase();
+  if (t === "ceiling" || t === "hotwork" || t === "fai") return true;
+  if (t === "permit-arch" || t === "permit-mep" || t === "permit-cabling") return true;
+  if (t.includes("based on selected permit")) return true;
+  if (t.includes("ceiling work") || t.includes("ceiling panel") || t.includes("false ceiling")) return true;
+  if (t.includes("hotwork") || t.includes("hot work")) return true;
+  if (t.includes("fire alarm isolation") || t.includes("above-ceiling") || t.includes("roof work")) return true;
+  if (t.includes("affect fire protection") || t.includes("affected fire protection")) return true;
+  if (t.includes("selected permit type")) return true;
   return false;
 }
 
+/** Unit-profile filter. Role tags and work-scope tags never hide a block. */
+export function tagAppliesToUnit(
+  tag: string | undefined,
+  unit: Unit,
+  profile: UnitProfile = unitProfile(unit),
+): boolean {
+  if (!tag) return true;
+  if (isWorkTag(tag)) return true;
+
+  const t = tag.toLowerCase();
+
+  if (t.includes("duplex")) return profile.duplex;
+  if (t.includes("outgoing")) return profile.outgoing;
+  if (t.includes("landside")) return profile.landsideConcessions;
+  if (t.includes("facing travelling pax") || t.includes("facing traveling pax")) {
+    return profile.facesTravellingPax;
+  }
+  if (t.includes("t4 only") || t === "t4" || t.includes("terminal 4 only")) {
+    return profile.terminal === "T4";
+  }
+  if (t.includes("t3 only") || t.includes("terminal 3 (")) {
+    return profile.terminal === "T3";
+  }
+  if (t.includes("t1 / t3") || t.includes("t1, t2, t3") || t.includes("terminal 1, terminal 2, terminal 3")) {
+    return profile.terminal === "T1" || profile.terminal === "T2" || profile.terminal === "T3";
+  }
+  if (t.includes("t2 / t4")) return profile.terminal === "T2" || profile.terminal === "T4";
+  if (t.includes("retail") && t.includes("f&b")) {
+    return profile.tenancyType === "F&B" || profile.tenancyType === "Retail";
+  }
+  if (t.includes("f&b") && !t.includes("retail") && profile.tenancyType !== "F&B") return false;
+  if (t.includes("retail") && !t.includes("f&b") && profile.tenancyType !== "Retail") return false;
+  if (t.includes("need gas") && profile.tenancyType !== "F&B") return false;
+  if (t.includes("closed-door")) return false;
+  if (t.includes("event space")) return false;
+  if (t.includes("servers/computer") || t.includes("computer rooms")) return false;
+  if (t.includes("lack of perm meter")) return false;
+  return true;
+}
+
+/** @deprecated Use tagAppliesToUnit. showFull is ignored — one unit = one map. */
 export function tagApplies(
   tag: string | undefined,
   tenancyType: string,
   terminal: string,
-  showFull: boolean,
+  _showFull?: boolean,
 ) {
-  if (!tag) return true;
-  if (showFull) return true;
-  const t = tag.toLowerCase();
-  if (t.includes("retail") && t.includes("f&b")) return true;
-  if (t.includes("f&b") && !t.includes("retail") && tenancyType !== "F&B")
-    return false;
-  if (t.includes("retail") && !t.includes("f&b") && tenancyType !== "Retail")
-    return false;
-  if (t.includes("need gas") && tenancyType !== "F&B") return false;
-  if (t.includes("t3 only") && terminal !== "T3") return false;
-  if (t.includes("t4 only") && terminal !== "T4") return false;
-  if (t.includes("t1 / t3") && terminal !== "T1" && terminal !== "T3")
-    return false;
-  if (t.includes("t2 / t4") && terminal !== "T2" && terminal !== "T4")
-    return false;
-  if (t.includes("landside")) return false;
-  if (t.includes("duplex")) return false;
-  if (t.includes("closed-door")) return false;
-  if (t.includes("event space")) return false;
-  return true;
+  return tagAppliesToUnit(tag, unitFromFacts(tenancyType, terminal));
 }
 
-export function filterSubSteps(
-  step: Step,
-  role: Role,
+export function unitFromFacts(
   tenancyType: string,
   terminal: string,
-  showFull: boolean,
+  extras: Partial<Unit> = {},
+): Unit {
+  const zone = extras.zone ?? "Airside";
+  return {
+    id: extras.id ?? "compat",
+    unitNo: extras.unitNo ?? "",
+    terminal: (terminal as Unit["terminal"]) || "T3",
+    tenancyType: tenancyType as Unit["tenancyType"],
+    zone,
+    company: extras.company ?? "",
+    facesTravellingPax: extras.facesTravellingPax,
+    duplex: extras.duplex,
+    landsideConcessions: extras.landsideConcessions,
+    outgoing: extras.outgoing,
+  };
+}
+
+function resolveUnit(
+  tenancyTypeOrUnit: string | Unit,
+  terminal?: string,
+): Unit {
+  if (typeof tenancyTypeOrUnit !== "string") return tenancyTypeOrUnit;
+  return unitFromFacts(tenancyTypeOrUnit, terminal ?? "T3");
+}
+
+/** Unit-profile filter only. Role never drops a task from the step. */
+export function filterSubSteps(
+  step: Step,
+  roleOrUnit: Role | Unit,
+  tenancyType?: string,
+  terminal?: string,
+  _showFull?: boolean,
 ): SubStep[] {
-  return step.subSteps.filter((s) => {
-    if (!audienceForRole(role, s.audience)) return false;
-    return tagApplies(s.tag, tenancyType, terminal, showFull);
-  });
+  const unit =
+    typeof roleOrUnit !== "string"
+      ? roleOrUnit
+      : resolveUnit(tenancyType ?? "F&B", terminal);
+  return step.subSteps.filter((s) => tagAppliesToUnit(s.tag, unit));
 }
 
 export function stepWhat(step: Step, role: Role) {
   return step.whatFor?.[role] ?? step.what;
 }
 
-/** Concrete action for the signed-in role (not dual-visible context). */
+/** Concrete action or “what you get” for the signed-in role. */
 export function isMyAction(role: Role, audience: Audience): boolean {
+  if (audience === "shared") return true;
   if (audience === role) return true;
-  if (Array.isArray(audience)) {
-    if (role === "officer") return audience.includes("officer");
-    return audience.includes(role) && !audience.includes("officer");
-  }
+  if (Array.isArray(audience)) return audience.includes(role);
   return false;
+}
+
+export function displayText(sub: SubStep, mine: boolean, role?: Role) {
+  if (mine || role === "officer") return sub.text;
+  return sub.alsoText ?? sub.text;
 }
 
 export function partitionGuide(subs: SubStep[], role: Role) {
@@ -83,61 +149,93 @@ export function partitionGuide(subs: SubStep[], role: Role) {
   return { mine, others };
 }
 
+export type ClassifiedSub = SubStep & { mine: boolean };
+
 export type ClassifiedStep = {
   step: Step;
   mine: SubStep[];
   others: SubStep[];
+  flow: ClassifiedSub[];
   kind: "yours" | "also";
 };
 
+export function groupGuideBlocks(subs: SubStep[]) {
+  const sequential: SubStep[] = [];
+  const parallel: SubStep[] = [];
+  const nested: SubStep[] = [];
+  for (const s of subs) {
+    if (s.workIf) nested.push(s);
+    else if (s.seq === "parallel") parallel.push(s);
+    else sequential.push(s);
+  }
+  return { sequential, parallel, nested };
+}
+
+/**
+ * A step stays in the rail if the unit has any tasks in it.
+ * Role never drops the chapter — empty-for-this-login becomes a handoff.
+ */
 export function classifyStep(
   step: Step,
   role: Role,
-  tenancyType: string,
-  terminal: string,
-  showFull: boolean,
+  tenancyTypeOrUnit: string | Unit,
+  terminal?: string,
+  _showFull?: boolean,
 ): ClassifiedStep | null {
-  const subs = filterSubSteps(step, role, tenancyType, terminal, showFull);
+  const unit = resolveUnit(tenancyTypeOrUnit, terminal);
+  const subs = step.subSteps.filter((s) => tagAppliesToUnit(s.tag, unit));
   if (subs.length === 0) return null;
   const { mine, others } = partitionGuide(subs, role);
-  if (mine.length > 0) return { step, mine, others, kind: "yours" };
-  return { step, mine, others, kind: "also" };
+  const flow: ClassifiedSub[] = subs.map((s) => ({
+    ...s,
+    mine: isMyAction(role, s.audience),
+  }));
+  return { step, mine, others, flow, kind: mine.length ? "yours" : "also" };
 }
 
 export function classifyStage(
   stage: Stage,
   role: Role,
-  tenancyType: string,
-  terminal: string,
-  showFull: boolean,
+  tenancyTypeOrUnit: string | Unit,
+  terminal?: string,
+  _showFull?: boolean,
 ) {
-  const yours: ClassifiedStep[] = [];
-  const also: ClassifiedStep[] = [];
+  const unit = resolveUnit(tenancyTypeOrUnit, terminal);
+  const steps: ClassifiedStep[] = [];
   for (const step of stage.steps) {
-    const c = classifyStep(step, role, tenancyType, terminal, showFull);
-    if (!c) continue;
-    if (c.kind === "yours") yours.push(c);
-    else also.push(c);
+    const c = classifyStep(step, role, unit);
+    if (c) steps.push(c);
   }
-  return { yours, also };
+  // Same skeleton for every login: every unit-applicable step is a chapter.
+  return { yours: steps, also: [] as ClassifiedStep[], steps };
 }
 
 export function countYourSteps(
   phase: Phase,
   role: Role,
-  tenancyType: string,
-  terminal: string,
-  showFull: boolean,
+  tenancyTypeOrUnit: string | Unit,
+  terminal?: string,
+  _showFull?: boolean,
 ) {
   return phase.stages.reduce((n, stage) => {
-    const { yours } = classifyStage(stage, role, tenancyType, terminal, showFull);
+    const { yours } = classifyStage(stage, role, tenancyTypeOrUnit, terminal);
     return n + yours.length;
   }, 0);
 }
 
+export function phasesForUnit(unit: Unit, phases: Phase[] = PHASES): Phase[] {
+  const profile = unitProfile(unit);
+  return phases.filter((phase) => {
+    if (phase.id === "exit" && !profile.outgoing) return false;
+    return phase.stages.some((stage) => classifyStage(stage, "officer", unit).steps.length > 0);
+  });
+}
+
 export function alsoLine(c: ClassifiedStep, role: Role) {
-  const fromOthers = c.others[0]?.text;
-  if (fromOthers) return fromOthers;
+  const fromOthers = c.others[0];
+  if (fromOthers) return displayText(fromOthers, false);
+  const fromMine = c.mine[0];
+  if (fromMine) return displayText(fromMine, true);
   return stepWhat(c.step, role);
 }
 
