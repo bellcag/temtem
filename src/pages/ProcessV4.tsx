@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link, useSearchParams } from "react-router-dom";
+import { useSearchParams } from "react-router-dom";
 import { ChevronDown, ChevronLeft, ChevronRight, MapPin } from "lucide-react";
 import { useApp, type Role } from "@/lib/app-state";
 import { UNITS, type Unit } from "@/lib/tenancy-data";
@@ -208,12 +208,6 @@ export function ProcessV4Page() {
             see everyone&apos;s cards so they can guide the path.
           </p>
         </div>
-        <Link
-          to="/process-v3"
-          className="shrink-0 text-xs font-bold text-grey-500 hover:text-purple-700"
-        >
-          Open previous guide
-        </Link>
       </header>
 
       <section className="mb-10 rounded-[var(--radius-md)] border border-grey-100 bg-white p-4 shadow-[var(--shadow-light-bg)] tablet:p-6 desktop:p-8">
