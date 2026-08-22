@@ -9,7 +9,6 @@ import {
   STAKEHOLDERS,
   cardVisible,
   cardsInPhase,
-  displayValue,
   isListed,
   isMyCard,
   stagesInPhase,
@@ -18,6 +17,17 @@ import {
   type PhaseId,
   type Stakeholder,
 } from "@/lib/journey-cards";
+import {
+  PHASE_FACE,
+  eligibilityLines,
+  faceAction,
+  faceRule,
+  faceStage,
+  faceStep,
+  faceTitle,
+  ruleBadge,
+  splitListed,
+} from "@/lib/journey-voice";
 import { cn } from "@/lib/utils";
 
 const LS_PHASE = "tempo:v4:phase";
@@ -38,23 +48,14 @@ function roleFromApp(role: Role): Stakeholder {
   return ROLE_TO_WHO[role];
 }
 
-function previewLines(value: string | null, count = 2) {
-  if (!isListed(value)) return { shown: [] as string[], more: 0 };
-  const parts = value!
-    .split(/\n|,(?=\s)/)
-    .map((p) => p.trim())
-    .filter(Boolean);
-  if (parts.length <= 1) {
-    const lines = value!.split("\n").map((l) => l.trim()).filter(Boolean);
-    return { shown: lines.slice(0, count), more: Math.max(0, lines.length - count) };
-  }
-  return { shown: parts.slice(0, count), more: Math.max(0, parts.length - count) };
-}
-
 const PRIMARY_ROLES: { who: Stakeholder; role: Role; hint: string }[] = [
-  { who: "Tenant", role: "tenant", hint: "Your tasks only" },
-  { who: "Contractor", role: "contractor", hint: "Your tasks only" },
-  { who: "Project Officer", role: "officer", hint: "Everyone's tasks, so you can guide" },
+  { who: "Tenant", role: "tenant", hint: "You'll only see your steps" },
+  { who: "Contractor", role: "contractor", hint: "You'll only see your steps" },
+  {
+    who: "Project Officer",
+    role: "officer",
+    hint: "You'll see everyone's steps so you can guide them",
+  },
 ];
 
 export function ProcessV4Page() {
@@ -198,14 +199,15 @@ export function ProcessV4Page() {
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-2">
-            <h1>Process</h1>
+            <h1>Follow your renovation</h1>
             <span className="inline-flex items-center rounded-[var(--radius-sm)] bg-grey-75 px-2 py-1 text-xs font-bold text-grey-700">
               Guide only
             </span>
           </div>
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-grey-500 desktop:text-base desktop:leading-5">
-            Tenants and contractors only see their own tasks. Project Officers
-            see everyone&apos;s cards so they can guide the path.
+            You&apos;ll only see the steps that are yours. If you&apos;re a
+            Project Officer, you&apos;ll see everyone&apos;s steps so you can
+            guide them.
           </p>
         </div>
       </header>
@@ -214,11 +216,11 @@ export function ProcessV4Page() {
         <div className="dls-grid-12 items-start">
           <div className="min-w-0 desktop:col-span-7">
             <div className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
-              Active unit
+              Your unit
             </div>
             {isOfficer && isUnscoped && processView !== "full" ? (
               <p className="mt-2 text-sm text-grey-600">
-                Choose a unit so this guide can hide tasks that do not apply.
+                Pick a unit so we can hide steps that don&apos;t apply.
               </p>
             ) : (
               <>
@@ -241,7 +243,7 @@ export function ProcessV4Page() {
           <div className="flex w-full flex-col gap-3 desktop:col-span-5 desktop:items-end">
             <div className="w-full desktop:max-w-sm">
               <span className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
-                Interact as
+                Who you are
               </span>
               <div className="mt-1 grid grid-cols-3 gap-1 rounded-[var(--radius-sm)] border border-grey-200 bg-grey-25 p-1">
                 {PRIMARY_ROLES.map((r) => (
@@ -265,7 +267,7 @@ export function ProcessV4Page() {
             {isOfficer && (
               <label className="flex w-full flex-col gap-1 desktop:max-w-sm">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
-                  Highlight a role to guide
+                  Whose steps to highlight
                 </span>
                 <select
                   value={who}
@@ -285,7 +287,7 @@ export function ProcessV4Page() {
             {role === "tenant" && (
               <label className="flex w-full flex-col gap-1 desktop:max-w-sm">
                 <span className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
-                  Switch outlet
+                  Your outlet
                 </span>
                 <select
                   value={unit.id}
@@ -318,7 +320,7 @@ export function ProcessV4Page() {
                     isUnscoped && "cursor-not-allowed opacity-50",
                   )}
                 >
-                  My unit
+                  This unit
                 </button>
                 <button
                   type="button"
@@ -330,7 +332,7 @@ export function ProcessV4Page() {
                       : "text-grey-500 hover:text-black",
                   )}
                 >
-                  Full process
+                  Every step
                 </button>
               </div>
             )}
@@ -340,7 +342,7 @@ export function ProcessV4Page() {
         {isOfficer && isUnscoped && (
           <div className="mt-4 flex flex-wrap gap-2 border-t border-grey-75 pt-4">
             <span className="self-center text-[11px] text-grey-500">
-              Quick-scope a unit:
+              Or pick a unit:
             </span>
             {UNITS.slice(0, 4).map((u) => (
               <button
@@ -363,9 +365,9 @@ export function ProcessV4Page() {
 
         <p className="mt-4 text-sm text-grey-600">
           {seesEveryone
-            ? `${yourCount} ${who} ${yourCount === 1 ? "task" : "tasks"} you own · ${contextCount} other ${contextCount === 1 ? "task" : "tasks"} you can guide`
-            : `${yourCount} of your ${yourCount === 1 ? "task" : "tasks"} in this phase`}
-          {showFull ? " · full catalogue" : ""}.
+            ? `You'll own ${yourCount} ${who} ${yourCount === 1 ? "step" : "steps"} here, and you can guide ${contextCount} more`
+            : `You've got ${yourCount} ${yourCount === 1 ? "step" : "steps"} here`}
+          {showFull ? ". This is every listed step" : ""}.
         </p>
       </section>
 
@@ -374,10 +376,10 @@ export function ProcessV4Page() {
           <div className="overflow-hidden rounded-[var(--radius-md)] border border-grey-100 bg-white shadow-[var(--shadow-light-bg)]">
             <div className="border-b border-grey-75 px-3 py-3 tablet:px-4">
               <p className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
-                Lifecycle overview
+                Your steps
               </p>
             </div>
-            <nav aria-label="Lifecycle phases">
+            <nav aria-label="Your steps">
               <ol>
                 {PHASES.map((p, i) => {
                   const isActive = p.id === activeId;
@@ -409,25 +411,25 @@ export function ProcessV4Page() {
                         </span>
                         <span className="min-w-0 flex-1">
                           <span className="block text-sm font-bold leading-[18px]">
-                            {p.name}
+                            {PHASE_FACE[p.id]?.name ?? p.name}
                           </span>
                           <span className="block text-xs font-semibold text-purple-600">
-                            {count} task{count === 1 ? "" : "s"}
+                            {count} step{count === 1 ? "" : "s"}
                           </span>
                         </span>
                       </button>
                       {isActive && (
                         <div className="max-h-[55vh] overflow-y-auto border-l-2 border-l-purple-600 bg-purple-100/40 px-3 py-3 pl-4">
                           <p className="text-sm leading-[18px] text-grey-600">
-                            {p.description}
+                            {PHASE_FACE[p.id]?.description ?? p.description}
                           </p>
                           <p className="mt-3 text-[10px] font-bold uppercase tracking-wider text-grey-500">
-                            Cards in {p.name}
+                            Steps in {PHASE_FACE[p.id]?.name ?? p.name}
                           </p>
                           {visibleStages.map((stage) => (
                             <div key={stage} className="mt-3">
                               <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-purple-700">
-                                {stage}
+                                {faceStage(stage)}
                               </p>
                               <ol className="space-y-0.5">
                                 {journeyItems
@@ -471,11 +473,12 @@ export function ProcessV4Page() {
                                                   : "font-semibold",
                                               )}
                                             >
-                                              {item.card.title}
+                                              {faceTitle(item.card.title)}
                                             </span>
                                             <span className="mt-0.5 block text-[11px] font-semibold text-grey-500">
-                                              {item.card.who}
-                                              {isNote ? " · others" : ""}
+                                              {isNote
+                                                ? `This is for the ${item.card.who}`
+                                                : "This is yours"}
                                             </span>
                                           </span>
                                         </button>
@@ -498,7 +501,8 @@ export function ProcessV4Page() {
         <div className="min-w-0">
           {!focused && (
             <div className="rounded-[var(--radius-md)] border border-grey-100 bg-white px-4 py-8 text-center text-sm text-grey-500">
-              Nothing in {activeId} for {who} on this unit.
+              There are no steps for you in{" "}
+              {PHASE_FACE[activeId]?.name ?? activeId} on this unit.
             </div>
           )}
 
@@ -509,13 +513,16 @@ export function ProcessV4Page() {
               onToggleDetails={() => setShowDetails((v) => !v)}
               onPrev={prevItem ? () => focusCard(prevItem.card.n) : undefined}
               onNext={nextItem ? () => focusCard(nextItem.card.n) : undefined}
-              prevTitle={prevItem?.card.title}
+              prevTitle={
+                prevItem ? faceTitle(prevItem.card.title) : undefined
+              }
               nextTitle={
-                nextItem?.card.title ??
-                (focusIndex === journeyItems.length - 1 &&
-                activeId === "Exit"
-                  ? "End of journey (no next task in the sheet)"
-                  : undefined)
+                nextItem
+                  ? faceTitle(nextItem.card.title)
+                  : focusIndex === journeyItems.length - 1 &&
+                      activeId === "Exit"
+                    ? "You've reached the last step in this guide"
+                    : undefined
               }
               who={who}
             />
@@ -532,7 +539,7 @@ function StepCard({
   onToggleDetails,
   onPrev,
   onNext,
-  prevTitle,
+  prevTitle: _prevTitle,
   nextTitle,
   who,
 }: {
@@ -547,11 +554,9 @@ function StepCard({
 }) {
   const card = item.card;
   const mine = item.kind === "you";
-  const inputPrev = previewLines(card.input);
-  const outputPrev = previewLines(card.output);
-  const channelPrev = previewLines(card.channel);
-  const systemPrev = previewLines(card.system);
-  const faceRules = card.rules.filter((r) =>
+  const needs = splitListed(card.input);
+  const eligibility = eligibilityLines(card);
+  const shownRules = card.rules.filter((r) =>
     showDetails ? true : r.rank !== "only-if" || card.rules.length <= 3,
   );
   const hiddenOnlyIf =
@@ -575,67 +580,85 @@ function StepCard({
             Step {card.n}
           </span>
           <span className="text-[11px] font-bold uppercase tracking-wider text-grey-500">
-            {card.phase}
+            {PHASE_FACE[card.phase]?.name ?? card.phase}
           </span>
           <span className="rounded-[var(--radius-sm)] bg-grey-75 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-grey-700">
-            {card.stage}
+            {faceStage(card.stage)}
           </span>
           {!mine && (
             <span className="rounded-[var(--radius-sm)] bg-grey-75 px-2 py-0.5 text-[11px] font-bold text-grey-600">
-              Others · {card.who}
+              This is for the {card.who}
             </span>
           )}
         </div>
         <h3 className="mt-2 text-base font-bold text-black desktop:text-lg desktop:leading-6">
-          {card.title}
+          {faceTitle(card.title)}
         </h3>
-        <p className="mt-1 text-xs font-semibold uppercase tracking-wider text-grey-500">
-          {card.step}
+        <p className="mt-1 text-xs font-semibold text-grey-500">
+          {faceStep(card.step)}
         </p>
       </header>
 
-      <section className="space-y-4 border-b border-grey-75 py-4">
-        <Field label="Who">{displayValue(card.who, "Not listed on this task")}</Field>
-        <Field label="Do this">{displayValue(card.task, "Not listed on this task")}</Field>
-        <Field label="Channel">
-          <MultiFace value={card.channel} preview={channelPrev} empty="Not listed on this task" open={showDetails} />
-        </Field>
+      <section className="space-y-3 border-b border-grey-75 py-4">
+        <p className="text-sm leading-relaxed text-black">
+          {faceAction(card, mine)}
+        </p>
+        {eligibility.length > 0 && (
+          <div>
+            <p className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
+              Only available if
+            </p>
+            <ul className="mt-2 list-disc space-y-1 pl-5 text-sm text-black">
+              {eligibility.map((line) => (
+                <li key={line}>{line}</li>
+              ))}
+            </ul>
+          </div>
+        )}
       </section>
 
-      <section className="space-y-4 border-b border-grey-75 py-4">
+      <section className="space-y-3 border-b border-grey-75 py-4">
         <p className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
-          What you need
+          What you&apos;ll need
         </p>
-        <Field label="You need">
-          <MultiFace value={card.input} preview={inputPrev} empty="None listed on this task" open={showDetails} />
-        </Field>
-        <Field label="You produce">
-          <MultiFace value={card.output} preview={outputPrev} empty="None listed on this task" open={showDetails} />
-        </Field>
-        <Field label="Use this system">
-          <MultiFace value={card.system} preview={systemPrev} empty="None listed on this task" open={showDetails} />
-        </Field>
+        {needs.length === 0 ? (
+          <p className="text-sm text-grey-600">
+            Nothing is listed for this step.
+          </p>
+        ) : (
+          <>
+            <p className="text-sm text-black">
+              To complete this step, you&apos;ll need:
+            </p>
+            <ul className="list-disc space-y-1 pl-5 text-sm text-black">
+              {needs.map((item) => (
+                <li key={item}>{item}</li>
+              ))}
+            </ul>
+          </>
+        )}
       </section>
 
       <section className="py-4">
         <p className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
-          Rules for this step
+          For this step
         </p>
         {card.rules.length === 0 ? (
           <p className="mt-3 text-sm text-grey-600">
-            None in the attached guidelines
+            The attached guidelines don&apos;t add a rule for this step.
           </p>
         ) : (
           <ul className="mt-3 space-y-3">
-            {faceRules.map((rule) => (
+            {shownRules.map((rule) => (
               <RuleBlock key={`${rule.rank}-${rule.source}`} rule={rule} open={showDetails} />
             ))}
           </ul>
         )}
         {hiddenOnlyIf.length > 0 && (
           <p className="mt-3 text-xs font-semibold text-grey-500">
-            {hiddenOnlyIf.length} Only-if rule
-            {hiddenOnlyIf.length === 1 ? "" : "s"} behind Show details
+            {hiddenOnlyIf.length} Only if{" "}
+            {hiddenOnlyIf.length === 1 ? "condition" : "conditions"} sit under
+            More about this step
           </p>
         )}
       </section>
@@ -646,28 +669,29 @@ function StepCard({
         className="inline-flex items-center gap-1 text-sm font-bold text-purple-700 hover:text-purple-800"
       >
         <ChevronDown className={cn("h-4 w-4", showDetails && "rotate-180")} />
-        {showDetails ? "Hide details" : "Show details"}
+        {showDetails ? "Hide extra detail" : "More about this step"}
       </button>
 
       {showDetails && (
         <dl className="mt-4 space-y-2 rounded-[var(--radius-sm)] bg-white p-4 text-sm">
-          <DetailRow label="Task Group" value={card.taskGroup} />
-          <DetailRow label="Sheet action verb" value={card.verb} />
-          <DetailRow label="Dependency" value={card.dependency} />
-          <DetailRow label="Input artefact type" value={card.inputType} />
-          <DetailRow label="Output artefact type" value={card.outputType} />
-          <DetailRow label="Unit Type" value={card.unitType} />
-          <DetailRow label="Area / Location" value={card.area} />
-          <DetailRow label="Work Scope" value={card.workScope} />
-          <DetailRow label="Unit Features" value={card.unitFeatures} />
-          <DetailRow label="Tenant Type" value={card.tenantType} />
+          <DetailRow label="Task group" value={card.taskGroup} />
+          <DetailRow label="Action on the sheet" value={card.verb} />
+          <DetailRow label="When this happens" value={card.dependency} />
+          <DetailRow label="Type of what you'll need" value={card.inputType} />
+          <DetailRow label="Type of what you'll get" value={card.outputType} />
+          <DetailRow label="Unit type" value={card.unitType} />
+          <DetailRow label="Area or location" value={card.area} />
+          <DetailRow label="Work scope" value={card.workScope} />
+          <DetailRow label="Unit features" value={card.unitFeatures} />
+          <DetailRow label="Tenant type" value={card.tenantType} />
+          <DetailRow label="Project officer type" value={card.poType} />
           <DetailRow
-            label="Project Officer Type"
-            value={card.poType}
-          />
-          <DetailRow
-            label="Viewing as"
-            value={`${who}${mine ? " · this card is yours" : ` · this card belongs to ${card.who}`}`}
+            label="You're viewing as"
+            value={
+              mine
+                ? `${who} — this step is yours`
+                : `${who} — this step is for the ${card.who}`
+            }
           />
         </dl>
       )}
@@ -680,7 +704,7 @@ function StepCard({
           className="inline-flex items-center gap-1 text-sm font-bold text-purple-700 disabled:text-grey-300"
         >
           <ChevronLeft className="h-4 w-4" />
-          {prevTitle ? `Previous · ${prevTitle}` : "Previous"}
+          Go back
         </button>
         <button
           type="button"
@@ -689,7 +713,7 @@ function StepCard({
           className="inline-flex max-w-[60%] items-center gap-1 text-right text-sm font-bold text-purple-700 disabled:text-grey-300"
         >
           <span className="truncate">
-            {nextTitle ? `Next · ${nextTitle}` : "Next"}
+            {onNext ? "Continue" : (nextTitle ?? "Continue")}
           </span>
           <ChevronRight className="h-4 w-4 shrink-0" />
         </button>
@@ -705,12 +729,7 @@ function RuleBlock({ rule, open }: { rule: JourneyRule; open: boolean }) {
       : rule.rank === "must-not"
         ? "bg-error-100 text-error-600"
         : "bg-warning-100 text-warning-600";
-  const label =
-    rule.rank === "must-do"
-      ? "Must do"
-      : rule.rank === "must-not"
-        ? "Must not"
-        : "Only if";
+  const label = ruleBadge(rule.rank);
   return (
     <li className="rounded-[var(--radius-sm)] border border-grey-100 bg-white p-3">
       <span
@@ -721,58 +740,15 @@ function RuleBlock({ rule, open }: { rule: JourneyRule; open: boolean }) {
       >
         {label}
       </span>
-      <p className="mt-2 text-sm leading-relaxed text-black">{rule.line}</p>
+      <p className="mt-2 text-sm leading-relaxed text-black">
+        {faceRule(rule.line)}
+      </p>
       {open && (
         <p className="mt-2 text-xs leading-relaxed text-grey-500">
           {rule.source} — “{rule.quote}”
         </p>
       )}
     </li>
-  );
-}
-
-function MultiFace({
-  value,
-  preview,
-  empty,
-  open,
-}: {
-  value: string | null;
-  preview: { shown: string[]; more: number };
-  empty: string;
-  open: boolean;
-}) {
-  if (!isListed(value)) return <span>{empty}</span>;
-  if (open) {
-    return (
-      <span className="whitespace-pre-wrap">{value}</span>
-    );
-  }
-  if (preview.shown.length <= 1 && preview.more === 0) {
-    return <span>{value}</span>;
-  }
-  return (
-    <span>
-      {preview.shown.join("; ")}
-      {preview.more > 0 ? ` +${preview.more} more` : ""}
-    </span>
-  );
-}
-
-function Field({
-  label,
-  children,
-}: {
-  label: string;
-  children: React.ReactNode;
-}) {
-  return (
-    <div>
-      <div className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
-        {label}
-      </div>
-      <div className="mt-1 text-sm leading-relaxed text-black">{children}</div>
-    </div>
   );
 }
 
@@ -787,7 +763,7 @@ function DetailRow({
     <div className="grid grid-cols-[140px_minmax(0,1fr)] gap-3">
       <dt className="text-xs font-bold text-grey-500">{label}</dt>
       <dd className="text-xs text-grey-700">
-        {isListed(value) ? value : "(blank in the sheet)"}
+        {isListed(value) ? value : "Nothing is listed"}
       </dd>
     </div>
   );
