@@ -215,7 +215,13 @@ export function faceAction(card: JourneyCard, mine: boolean) {
     bits.push(`You'll use ${card.system}.`);
   }
   if (isListed(card.output)) {
-    bits.push(`You'll get ${card.output}.`);
+    const out = card.output.trim();
+    const short = out.split(/\s+/).length <= 8;
+    if (short) {
+      bits.push(mine ? `You'll get ${out}.` : `They'll get ${out}.`);
+    } else {
+      bits.push(out.endsWith(".") ? out : `${out}.`);
+    }
   }
   return bits.join(" ");
 }
