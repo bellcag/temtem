@@ -264,19 +264,19 @@ export function ProcessV4Page() {
 
   return (
     <div className="dls-page">
-      <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <header className="mb-6 flex flex-wrap items-start justify-between gap-4 desktop:mb-8">
         <div className="min-w-0 flex-1">
-          <div className="mb-1 flex flex-wrap items-center gap-2">
-            <h1>
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <h1 className="text-grey-800">
               {contractorMode
                 ? "Your permit workbench"
                 : "Follow your renovation"}
             </h1>
-            <span className="inline-flex items-center rounded-[var(--radius-sm)] bg-grey-75 px-2 py-1 text-xs font-bold text-grey-700">
+            <span className="dls-status-chip bg-grey-75 text-grey-600">
               Guide only
             </span>
           </div>
-          <p className="mt-1 max-w-2xl text-sm leading-relaxed text-grey-500 desktop:text-base desktop:leading-5">
+          <p className="dls-body mt-1 max-w-2xl text-grey-500">
             {tenantMode
               ? "You'll only see your steps. Each card says where you are, when it happens, what to do, and what to open."
               : contractorMode
@@ -286,29 +286,27 @@ export function ProcessV4Page() {
         </div>
       </header>
 
-      <section className="mb-10 rounded-[var(--radius-md)] border border-grey-100 bg-white p-4 shadow-[var(--shadow-light-bg)] tablet:p-6 desktop:p-8">
+      <section className="mb-6 rounded-[var(--radius-md)] border border-grey-100 bg-white p-4 shadow-[var(--shadow-light-bg)] tablet:p-6 desktop:mb-8 desktop:p-8">
         <div className="dls-grid-12 items-start">
           <div className="min-w-0 desktop:col-span-7">
-            <div className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
-              Your unit
-            </div>
+            <div className="dls-caption">Your unit</div>
             {isOfficer && isUnscoped && processView !== "full" ? (
               <p className="mt-2 text-sm text-grey-600">
                 Pick a unit so we can hide steps that don&apos;t apply.
               </p>
             ) : (
               <>
-                <div className="mt-1 flex flex-wrap items-center gap-2">
+                <div className="mt-2 flex flex-wrap items-center gap-2">
                   <MapPin className="h-4 w-4 shrink-0 text-purple-600" />
-                  <span className="text-base font-bold text-black">
+                  <span className="text-base font-bold text-grey-800 desktop:text-lg desktop:leading-[22px]">
                     {ctxUnit.unitNo}
                   </span>
                 </div>
-                <div className="mt-2 flex flex-wrap gap-2">
-                  <Chip>{ctxUnit.terminal}</Chip>
-                  <Chip>{ctxUnit.tenancyType}</Chip>
-                  <Chip>{ctxUnit.zone}</Chip>
-                  <Chip>{ctxUnit.company}</Chip>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <span className="dls-attr-chip">{ctxUnit.terminal}</span>
+                  <span className="dls-attr-chip">{ctxUnit.tenancyType}</span>
+                  <span className="dls-attr-chip">{ctxUnit.zone}</span>
+                  <span className="dls-attr-chip">{ctxUnit.company}</span>
                 </div>
               </>
             )}
@@ -316,20 +314,18 @@ export function ProcessV4Page() {
 
           <div className="flex w-full flex-col gap-3 desktop:col-span-5 desktop:items-end">
             <div className="w-full desktop:max-w-sm">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
-                Who you are
-              </span>
-              <div className="mt-1 grid grid-cols-3 gap-1 rounded-[var(--radius-sm)] border border-grey-200 bg-grey-25 p-1">
+              <span className="dls-caption">Who you are</span>
+              <div className="mt-2 grid grid-cols-3 gap-1 rounded-[var(--radius-md)] border border-grey-200 bg-grey-25 p-1">
                 {PRIMARY_ROLES.map((r) => (
                   <button
                     key={r.who}
                     type="button"
                     onClick={() => signInAs(r.who)}
                     className={cn(
-                      "rounded-[var(--radius-sm)] px-2 py-2 text-[11px] font-bold leading-tight",
+                      "rounded-[var(--radius-md)] px-2 py-2 text-[12px] font-bold leading-4",
                       who === r.who
-                        ? "bg-purple-600 text-white"
-                        : "text-grey-600 hover:text-black",
+                        ? "border border-purple-600 bg-purple-100 text-purple-600"
+                        : "border border-transparent text-grey-600 hover:bg-purple-100 hover:text-purple-600",
                     )}
                     title={r.hint}
                   >
@@ -340,9 +336,7 @@ export function ProcessV4Page() {
             </div>
             {isOfficer && (
               <label className="flex w-full flex-col gap-1 desktop:max-w-sm">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
-                  Whose steps to highlight
-                </span>
+                <span className="dls-caption">Whose steps to highlight</span>
                 <select
                   value={who}
                   onChange={(e) => highlightWho(e.target.value as Stakeholder)}
@@ -360,9 +354,7 @@ export function ProcessV4Page() {
 
             {role === "tenant" && (
               <label className="flex w-full flex-col gap-1 desktop:max-w-sm">
-                <span className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
-                  Your outlet
-                </span>
+                <span className="dls-caption">Your outlet</span>
                 <select
                   value={unit.id}
                   onChange={(e) => {
@@ -389,8 +381,8 @@ export function ProcessV4Page() {
                   className={cn(
                     "flex-1 rounded-[var(--radius-sm)] px-3 py-2 text-xs font-bold desktop:flex-none",
                     processView === "my-unit"
-                      ? "bg-purple-600 text-white"
-                      : "text-grey-500 hover:text-black",
+                      ? "border border-purple-600 bg-purple-100 text-purple-600"
+                      : "border border-transparent text-grey-500 hover:text-purple-600",
                     isUnscoped && "cursor-not-allowed opacity-50",
                   )}
                 >
@@ -402,8 +394,8 @@ export function ProcessV4Page() {
                   className={cn(
                     "flex-1 rounded-[var(--radius-sm)] px-3 py-2 text-xs font-bold desktop:flex-none",
                     processView === "full"
-                      ? "bg-purple-600 text-white"
-                      : "text-grey-500 hover:text-black",
+                      ? "border border-purple-600 bg-purple-100 text-purple-600"
+                      : "border border-transparent text-grey-500 hover:text-purple-600",
                   )}
                 >
                   Every step
@@ -437,7 +429,7 @@ export function ProcessV4Page() {
           </div>
         )}
 
-        <p className="mt-4 text-sm text-grey-600">
+        <p className="dls-body mt-4 text-grey-600">
           {condensedMode
             ? `You're on ${PHASE_FACE[activeId]?.name ?? activeId} — ${yourCount} of your ${yourCount === 1 ? "step" : "steps"} here, ${condensedTotal} in the whole path.`
             : seesEveryone
@@ -448,13 +440,84 @@ export function ProcessV4Page() {
         </p>
       </section>
 
-      <div className="flex flex-col gap-6 tablet:grid tablet:grid-cols-[minmax(220px,280px)_minmax(0,1fr)] tablet:items-start tablet:gap-6 desktop:grid-cols-[minmax(240px,300px)_minmax(0,1fr)] desktop:gap-8">
-        <aside className="tablet:sticky tablet:top-6">
+      <div className="mb-6 tablet:hidden">
+        <p className="dls-caption">Your steps</p>
+        <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
+          {PHASES.map((p) => {
+            const isActive = p.id === activeId;
+            const count = condensedMode
+              ? tenantMode
+                ? tenantStepsInPhase(p.id).length
+                : contractorStepsInPhase(p.id).length
+              : JOURNEY_CARDS.filter(
+                  (c) => c.phase === p.id && cardVisible(c, ctx),
+                ).length;
+            return (
+              <button
+                key={p.id}
+                type="button"
+                onClick={() => selectPhase(p.id)}
+                aria-current={isActive ? "true" : undefined}
+                className={cn(
+                  "shrink-0 rounded-[var(--radius-md)] border px-3 py-2 text-left",
+                  isActive
+                    ? "border-purple-600 bg-purple-100 text-purple-600"
+                    : "border-grey-200 bg-white text-grey-600",
+                )}
+              >
+                <span className="block text-sm font-bold leading-[18px]">
+                  {PHASE_FACE[p.id]?.name ?? p.name}
+                </span>
+                <span className="block text-xs font-semibold text-grey-500">
+                  {count} step{count === 1 ? "" : "s"}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+        {condensedMode && condensedPhaseSteps.length > 0 && (
+          <label className="mt-4 flex flex-col gap-2">
+            <span className="dls-caption">
+              Steps in {PHASE_FACE[activeId]?.name ?? activeId}
+            </span>
+            <select
+              value={focusedN ?? condensedPhaseSteps[0]?.id}
+              onChange={(e) => focusCard(Number(e.target.value))}
+              className="w-full rounded-[var(--radius-md)] border border-grey-200 bg-white px-3 py-2 text-sm font-bold text-grey-800"
+            >
+              {condensedPhaseSteps.map((s) => (
+                <option key={s.id} value={s.id}>
+                  {s.id}. {s.title}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+        {!condensedMode && journeyItems.length > 0 && (
+          <label className="mt-4 flex flex-col gap-2">
+            <span className="dls-caption">
+              Steps in {PHASE_FACE[activeId]?.name ?? activeId}
+            </span>
+            <select
+              value={focusedN ?? journeyItems[0]?.card.n}
+              onChange={(e) => focusCard(Number(e.target.value))}
+              className="w-full rounded-[var(--radius-md)] border border-grey-200 bg-white px-3 py-2 text-sm font-bold text-grey-800"
+            >
+              {journeyItems.map((item) => (
+                <option key={item.card.n} value={item.card.n}>
+                  {item.card.n}. {faceTitle(item.card.title)}
+                </option>
+              ))}
+            </select>
+          </label>
+        )}
+      </div>
+
+      <div className="flex flex-col gap-6 tablet:grid tablet:grid-cols-12 tablet:items-start tablet:gap-6 desktop:gap-8">
+        <aside className="hidden tablet:sticky tablet:top-6 tablet:col-span-4 tablet:block desktop:col-span-3">
           <div className="overflow-hidden rounded-[var(--radius-md)] border border-grey-100 bg-white shadow-[var(--shadow-light-bg)]">
-            <div className="border-b border-grey-75 px-3 py-3 tablet:px-4">
-              <p className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
-                Your steps
-              </p>
+            <div className="border-b border-grey-100 px-3 py-3 tablet:px-4">
+              <p className="dls-caption">Your steps</p>
             </div>
             <nav aria-label="Your steps">
               <ol>
@@ -504,12 +567,12 @@ export function ProcessV4Page() {
                           <p className="text-sm leading-[18px] text-grey-600">
                             {PHASE_FACE[p.id]?.description ?? p.description}
                           </p>
-                          <p className="mt-3 text-[10px] font-bold uppercase tracking-wider text-grey-500">
+                          <p className="dls-caption mt-3">
                             Steps in {PHASE_FACE[p.id]?.name ?? p.name}
                           </p>
                           {visibleStages.map((stage) => (
                             <div key={stage} className="mt-3">
-                              <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-purple-700">
+                              <p className="dls-caption mb-1 text-purple-700">
                                 {condensedMode ? stage : faceStage(stage)}
                               </p>
                               <ol className="space-y-0.5">
@@ -627,7 +690,7 @@ export function ProcessV4Page() {
           </div>
         </aside>
 
-        <div className="min-w-0">
+        <div className="min-w-0 tablet:col-span-8 desktop:col-span-9">
           {condensedMode && !condensedFocus && (
             <div className="rounded-[var(--radius-md)] border border-grey-100 bg-white px-4 py-8 text-center text-sm text-grey-500">
               There are no steps for you in{" "}
@@ -971,10 +1034,3 @@ function DetailRow({
   );
 }
 
-function Chip({ children }: { children: React.ReactNode }) {
-  return (
-    <span className="inline-flex items-center rounded-[var(--radius-sm)] border border-grey-100 bg-white px-2 py-1 text-[11px] font-bold text-grey-700">
-      {children}
-    </span>
-  );
-}
