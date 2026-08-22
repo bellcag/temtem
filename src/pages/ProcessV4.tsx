@@ -28,6 +28,12 @@ import {
   ruleBadge,
   splitListed,
 } from "@/lib/journey-voice";
+import {
+  TENANT_PATH,
+  tenantPathTotal,
+  tenantStepsInPhase,
+} from "@/lib/tenant-path";
+import { TenantStepCard } from "@/components/TenantStepCard";
 import { cn } from "@/lib/utils";
 
 const LS_PHASE = "tempo:v4:phase";
@@ -102,6 +108,7 @@ export function ProcessV4Page() {
   const ctxUnit: Unit = effectiveUnit ?? unit;
   const showFull = isOfficer && (processView === "full" || isUnscoped);
   const seesEveryone = isOfficer;
+  const tenantMode = who === "Tenant";
 
   const ctx = {
     tenancyType: ctxUnit.tenancyType,
@@ -130,6 +137,11 @@ export function ProcessV4Page() {
     seesEveryone,
   ]);
 
+  const tenantPhaseSteps = useMemo(
+    () => tenantStepsInPhase(activeId),
+    [activeId],
+  );
+
   const journeyItems = useMemo<JourneyItem[]>(() => {
     return phaseCards.map((card) => ({
       kind: isMyCard(card, who) ? "you" : "context",
@@ -139,9 +151,12 @@ export function ProcessV4Page() {
 
   const yourItems = journeyItems.filter((i) => i.kind === "you");
   const startHere = yourItems[0] ?? journeyItems[0] ?? null;
+  const tenantStart = tenantPhaseSteps[0]?.id ?? null;
 
-  const journeyKey = journeyItems.map((i) => i.card.n).join(",");
-  const startN = startHere?.card.n ?? null;
+  const journeyKey = tenantMode
+    ? tenantPhaseSteps.map((s) => s.id).join(",")
+    : journeyItems.map((i) => i.card.n).join(",");
+  const startN = tenantMode ? tenantStart : (startHere?.card.n ?? null);
   useEffect(() => {
     const ids = journeyKey ? journeyKey.split(",").map(Number) : [];
     setFocusedN((prev) => {
@@ -160,6 +175,23 @@ export function ProcessV4Page() {
     focusIndex >= 0 && focusIndex < journeyItems.length - 1
       ? journeyItems[focusIndex + 1]
       : null;
+
+  const tenantFocus =
+    tenantPhaseSteps.find((s) => s.id === focusedN) ??
+    tenantPhaseSteps[0] ??
+    null;
+  const tenantFocusIndex = tenantFocus
+    ? tenantPhaseSteps.findIndex((s) => s.id === tenantFocus.id)
+    : -1;
+  const tenantPrev =
+    tenantFocusIndex > 0 ? tenantPhaseSteps[tenantFocusIndex - 1] : null;
+  const tenantNext =
+    tenantFocusIndex >= 0 && tenantFocusIndex < tenantPhaseSteps.length - 1
+      ? tenantPhaseSteps[tenantFocusIndex + 1]
+      : null;
+  const tenantNextAcross =
+    tenantNext ??
+    TENANT_PATH.find((s) => tenantFocus && s.id === tenantFocus.id + 1);
 
   const selectPhase = (id: PhaseId) => {
     setActiveId(id);
@@ -187,12 +219,14 @@ export function ProcessV4Page() {
     });
   };
 
-  const visibleStages = stagesInPhase(activeId).filter((stage) =>
-    journeyItems.some((i) => i.card.stage === stage),
-  );
+  const visibleStages = tenantMode
+    ? [...new Set(tenantPhaseSteps.map((s) => s.stage))]
+    : stagesInPhase(activeId).filter((stage) =>
+        journeyItems.some((i) => i.card.stage === stage),
+      );
 
-  const yourCount = yourItems.length;
-  const contextCount = journeyItems.length - yourCount;
+  const yourCount = tenantMode ? tenantPhaseSteps.length : yourItems.length;
+  const contextCount = journeyItems.length - yourItems.length;
 
   return (
     <div className="dls-page">
@@ -205,9 +239,9 @@ export function ProcessV4Page() {
             </span>
           </div>
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-grey-500 desktop:text-base desktop:leading-5">
-            You&apos;ll only see the steps that are yours. If you&apos;re a
-            Project Officer, you&apos;ll see everyone&apos;s steps so you can
-            guide them.
+            {tenantMode
+              ? "You'll only see your steps. Each card says where you are, when it happens, what to do, and what to open."
+              : "You'll only see the steps that are yours. If you're a Project Officer, you'll see everyone's steps so you can guide them."}
           </p>
         </div>
       </header>
@@ -364,10 +398,13 @@ export function ProcessV4Page() {
         )}
 
         <p className="mt-4 text-sm text-grey-600">
-          {seesEveryone
-            ? `You'll own ${yourCount} ${who} ${yourCount === 1 ? "step" : "steps"} here, and you can guide ${contextCount} more`
-            : `You've got ${yourCount} ${yourCount === 1 ? "step" : "steps"} here`}
-          {showFull ? ". This is every listed step" : ""}.
+          {tenantMode
+            ? `You're on ${PHASE_FACE[activeId]?.name ?? activeId} — ${yourCount} of your ${yourCount === 1 ? "step" : "steps"} here, ${tenantPathTotal()} in the whole path.`
+            : seesEveryone
+              ? `You'll own ${yourCount} ${who} ${yourCount === 1 ? "step" : "steps"} here, and you can guide ${contextCount} more`
+              : `You've got ${yourCount} ${yourCount === 1 ? "step" : "steps"} here`}
+          {!tenantMode && showFull ? ". This is every listed step" : ""}
+          {!tenantMode ? "." : ""}
         </p>
       </section>
 
@@ -383,9 +420,11 @@ export function ProcessV4Page() {
               <ol>
                 {PHASES.map((p, i) => {
                   const isActive = p.id === activeId;
-                  const count = JOURNEY_CARDS.filter(
-                    (c) => c.phase === p.id && cardVisible(c, ctx),
-                  ).length;
+                  const count = tenantMode
+                    ? tenantStepsInPhase(p.id).length
+                    : JOURNEY_CARDS.filter(
+                        (c) => c.phase === p.id && cardVisible(c, ctx),
+                      ).length;
                   return (
                     <li key={p.id}>
                       <button
@@ -429,62 +468,110 @@ export function ProcessV4Page() {
                           {visibleStages.map((stage) => (
                             <div key={stage} className="mt-3">
                               <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-purple-700">
-                                {faceStage(stage)}
+                                {tenantMode ? stage : faceStage(stage)}
                               </p>
                               <ol className="space-y-0.5">
-                                {journeyItems
-                                  .filter((item) => item.card.stage === stage)
-                                  .map((item) => {
-                                    const isFocused = item.card.n === focusedN;
-                                    const isNote = item.kind === "context";
-                                    return (
-                                      <li key={item.card.n}>
-                                        <button
-                                          type="button"
-                                          onClick={() => focusCard(item.card.n)}
-                                          className={cn(
-                                            "flex w-full items-start gap-2 rounded-[var(--radius-sm)] border-l-2 px-2.5 py-2 text-left",
-                                            isFocused
-                                              ? isNote
-                                                ? "border-l-grey-400 bg-white/90"
-                                                : "border-l-purple-600 bg-white/90 shadow-[var(--shadow-light-bg)]"
-                                              : "border-l-transparent hover:bg-white/60",
-                                          )}
-                                        >
-                                          <span
-                                            className={cn(
-                                              "mt-0.5 grid h-5 w-5 shrink-0 place-items-center text-[10px] font-black",
-                                              isNote
-                                                ? "rounded-[var(--radius-sm)]"
-                                                : "rounded-full",
-                                              isFocused && !isNote
-                                                ? "bg-purple-600 text-white"
-                                                : "border border-grey-200 bg-white text-grey-500",
-                                            )}
-                                          >
-                                            {item.card.n}
-                                          </span>
-                                          <span className="min-w-0 flex-1">
-                                            <span
+                                {tenantMode
+                                  ? tenantPhaseSteps
+                                      .filter((s) => s.stage === stage)
+                                      .map((s) => {
+                                        const isFocused = s.id === focusedN;
+                                        return (
+                                          <li key={s.id}>
+                                            <button
+                                              type="button"
+                                              onClick={() => focusCard(s.id)}
                                               className={cn(
-                                                "block text-sm leading-[18px]",
+                                                "flex w-full items-start gap-2 rounded-[var(--radius-sm)] border-l-2 px-2.5 py-2 text-left",
                                                 isFocused
-                                                  ? "font-bold"
-                                                  : "font-semibold",
+                                                  ? "border-l-purple-600 bg-white/90 shadow-[var(--shadow-light-bg)]"
+                                                  : "border-l-transparent hover:bg-white/60",
                                               )}
                                             >
-                                              {faceTitle(item.card.title)}
-                                            </span>
-                                            <span className="mt-0.5 block text-[11px] font-semibold text-grey-500">
-                                              {isNote
-                                                ? `This is for the ${item.card.who}`
-                                                : "This is yours"}
-                                            </span>
-                                          </span>
-                                        </button>
-                                      </li>
-                                    );
-                                  })}
+                                              <span
+                                                className={cn(
+                                                  "mt-0.5 grid h-5 w-5 shrink-0 place-items-center rounded-full text-[10px] font-black",
+                                                  isFocused
+                                                    ? "bg-purple-600 text-white"
+                                                    : "border border-grey-200 bg-white text-grey-500",
+                                                )}
+                                              >
+                                                {s.id}
+                                              </span>
+                                              <span className="min-w-0 flex-1">
+                                                <span
+                                                  className={cn(
+                                                    "block text-sm leading-[18px]",
+                                                    isFocused
+                                                      ? "font-bold"
+                                                      : "font-semibold",
+                                                  )}
+                                                >
+                                                  {s.title}
+                                                </span>
+                                                <span className="mt-0.5 block text-[11px] font-semibold text-grey-500">
+                                                  {s.wait
+                                                    ? "You wait here"
+                                                    : "This is yours"}
+                                                </span>
+                                              </span>
+                                            </button>
+                                          </li>
+                                        );
+                                      })
+                                  : journeyItems
+                                      .filter((item) => item.card.stage === stage)
+                                      .map((item) => {
+                                        const isFocused = item.card.n === focusedN;
+                                        const isNote = item.kind === "context";
+                                        return (
+                                          <li key={item.card.n}>
+                                            <button
+                                              type="button"
+                                              onClick={() => focusCard(item.card.n)}
+                                              className={cn(
+                                                "flex w-full items-start gap-2 rounded-[var(--radius-sm)] border-l-2 px-2.5 py-2 text-left",
+                                                isFocused
+                                                  ? isNote
+                                                    ? "border-l-grey-400 bg-white/90"
+                                                    : "border-l-purple-600 bg-white/90 shadow-[var(--shadow-light-bg)]"
+                                                  : "border-l-transparent hover:bg-white/60",
+                                              )}
+                                            >
+                                              <span
+                                                className={cn(
+                                                  "mt-0.5 grid h-5 w-5 shrink-0 place-items-center text-[10px] font-black",
+                                                  isNote
+                                                    ? "rounded-[var(--radius-sm)]"
+                                                    : "rounded-full",
+                                                  isFocused && !isNote
+                                                    ? "bg-purple-600 text-white"
+                                                    : "border border-grey-200 bg-white text-grey-500",
+                                                )}
+                                              >
+                                                {item.card.n}
+                                              </span>
+                                              <span className="min-w-0 flex-1">
+                                                <span
+                                                  className={cn(
+                                                    "block text-sm leading-[18px]",
+                                                    isFocused
+                                                      ? "font-bold"
+                                                      : "font-semibold",
+                                                  )}
+                                                >
+                                                  {faceTitle(item.card.title)}
+                                                </span>
+                                                <span className="mt-0.5 block text-[11px] font-semibold text-grey-500">
+                                                  {isNote
+                                                    ? `This is for the ${item.card.who}`
+                                                    : "This is yours"}
+                                                </span>
+                                              </span>
+                                            </button>
+                                          </li>
+                                        );
+                                      })}
                               </ol>
                             </div>
                           ))}
@@ -499,14 +586,54 @@ export function ProcessV4Page() {
         </aside>
 
         <div className="min-w-0">
-          {!focused && (
+          {tenantMode && !tenantFocus && (
             <div className="rounded-[var(--radius-md)] border border-grey-100 bg-white px-4 py-8 text-center text-sm text-grey-500">
               There are no steps for you in{" "}
               {PHASE_FACE[activeId]?.name ?? activeId} on this unit.
             </div>
           )}
 
-          {focused && (
+          {tenantMode && tenantFocus && (
+            <TenantStepCard
+              step={tenantFocus}
+              showDetails={showDetails}
+              onToggleDetails={() => setShowDetails((v) => !v)}
+              onPrev={
+                tenantPrev
+                  ? () => {
+                      if (tenantPrev.phase !== activeId) {
+                        selectPhase(tenantPrev.phase);
+                      }
+                      focusCard(tenantPrev.id);
+                    }
+                  : undefined
+              }
+              onNext={
+                tenantNextAcross
+                  ? () => {
+                      if (tenantNextAcross.phase !== activeId) {
+                        selectPhase(tenantNextAcross.phase);
+                      }
+                      focusCard(tenantNextAcross.id);
+                    }
+                  : undefined
+              }
+              nextTitle={
+                tenantNextAcross
+                  ? tenantNextAcross.title
+                  : "You've reached the last step in this guide."
+              }
+            />
+          )}
+
+          {!tenantMode && !focused && (
+            <div className="rounded-[var(--radius-md)] border border-grey-100 bg-white px-4 py-8 text-center text-sm text-grey-500">
+              There are no steps for you in{" "}
+              {PHASE_FACE[activeId]?.name ?? activeId} on this unit.
+            </div>
+          )}
+
+          {!tenantMode && focused && (
             <StepCard
               item={focused}
               showDetails={showDetails}
