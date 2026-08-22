@@ -154,6 +154,22 @@ export function isMyCard(card: JourneyCard, who: string) {
   return card.who === who;
 }
 
+/** Tenant and contractor only see their own cards. Officers see everyone. */
+export function cardVisible(
+  card: JourneyCard,
+  ctx: {
+    tenancyType: string;
+    terminal: string;
+    showFull: boolean;
+    who: string;
+    seesEveryone: boolean;
+  },
+) {
+  if (!cardApplies(card, ctx)) return false;
+  if (ctx.seesEveryone) return true;
+  return isMyCard(card, ctx.who);
+}
+
 export function stagesInPhase(phase: PhaseId) {
   const seen: string[] = [];
   for (const card of JOURNEY_CARDS) {

@@ -7,7 +7,7 @@ import {
   JOURNEY_CARDS,
   PHASES,
   STAKEHOLDERS,
-  cardApplies,
+  cardVisible,
   cardsInPhase,
   displayValue,
   isListed,
@@ -52,9 +52,9 @@ function previewLines(value: string | null, count = 2) {
 }
 
 const PRIMARY_ROLES: { who: Stakeholder; role: Role; hint: string }[] = [
-  { who: "Tenant", role: "tenant", hint: "Your outlet cards" },
-  { who: "Contractor", role: "contractor", hint: "Works and permits" },
-  { who: "Project Officer", role: "officer", hint: "Advise and approve" },
+  { who: "Tenant", role: "tenant", hint: "Your tasks only" },
+  { who: "Contractor", role: "contractor", hint: "Your tasks only" },
+  { who: "Project Officer", role: "officer", hint: "Everyone's tasks, so you can guide" },
 ];
 
 export function ProcessV4Page() {
@@ -100,22 +100,34 @@ export function ProcessV4Page() {
 
   const ctxUnit: Unit = effectiveUnit ?? unit;
   const showFull = isOfficer && (processView === "full" || isUnscoped);
+  const seesEveryone = isOfficer;
 
   const ctx = {
     tenancyType: ctxUnit.tenancyType,
     terminal: ctxUnit.terminal,
     showFull,
+    who,
+    seesEveryone,
   };
 
   const phaseCards = useMemo(() => {
     return cardsInPhase(activeId).filter((c) =>
-      cardApplies(c, {
+      cardVisible(c, {
         tenancyType: ctxUnit.tenancyType,
         terminal: ctxUnit.terminal,
         showFull,
+        who,
+        seesEveryone,
       }),
     );
-  }, [activeId, ctxUnit.tenancyType, ctxUnit.terminal, showFull]);
+  }, [
+    activeId,
+    ctxUnit.tenancyType,
+    ctxUnit.terminal,
+    showFull,
+    who,
+    seesEveryone,
+  ]);
 
   const journeyItems = useMemo<JourneyItem[]>(() => {
     return phaseCards.map((card) => ({
@@ -153,11 +165,16 @@ export function ProcessV4Page() {
     window.localStorage.setItem(LS_PHASE, id);
   };
 
-  const pickWho = (next: Stakeholder) => {
+  const signInAs = (next: Stakeholder) => {
     setWho(next);
     window.localStorage.setItem(LS_WHO, next);
     const mapped = PRIMARY_ROLES.find((r) => r.who === next);
     if (mapped && mapped.role !== role) setRole(mapped.role);
+  };
+
+  const highlightWho = (next: Stakeholder) => {
+    setWho(next);
+    window.localStorage.setItem(LS_WHO, next);
   };
 
   const focusCard = (n: number) => {
@@ -187,8 +204,8 @@ export function ProcessV4Page() {
             </span>
           </div>
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-grey-500 desktop:text-base desktop:leading-5">
-            One Excel task is one card. Rules on a card come only from the
-            renovation guidelines when they belong to that task.
+            Tenants and contractors only see their own tasks. Project Officers
+            see everyone&apos;s cards so they can guide the path.
           </p>
         </div>
         <Link
@@ -237,7 +254,7 @@ export function ProcessV4Page() {
                   <button
                     key={r.who}
                     type="button"
-                    onClick={() => pickWho(r.who)}
+                    onClick={() => signInAs(r.who)}
                     className={cn(
                       "rounded-[var(--radius-sm)] px-2 py-2 text-[11px] font-bold leading-tight",
                       who === r.who
@@ -251,23 +268,25 @@ export function ProcessV4Page() {
                 ))}
               </div>
             </div>
-            <label className="flex w-full flex-col gap-1 desktop:max-w-sm">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
-                Or another stakeholder
-              </span>
-              <select
-                value={who}
-                onChange={(e) => pickWho(e.target.value as Stakeholder)}
-                className="w-full rounded-[var(--radius-sm)] border border-grey-200 bg-white px-3 py-2 text-sm font-bold text-black"
-              >
-                {STAKEHOLDERS.map((s) => (
-                  <option key={s} value={s}>
-                    {s}
-                    {s === "System" ? " (OneCalendar)" : ""}
-                  </option>
-                ))}
-              </select>
-            </label>
+            {isOfficer && (
+              <label className="flex w-full flex-col gap-1 desktop:max-w-sm">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
+                  Highlight a role to guide
+                </span>
+                <select
+                  value={who}
+                  onChange={(e) => highlightWho(e.target.value as Stakeholder)}
+                  className="w-full rounded-[var(--radius-sm)] border border-grey-200 bg-white px-3 py-2 text-sm font-bold text-black"
+                >
+                  {STAKEHOLDERS.map((s) => (
+                    <option key={s} value={s}>
+                      {s}
+                      {s === "System" ? " (OneCalendar)" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            )}
 
             {role === "tenant" && (
               <label className="flex w-full flex-col gap-1 desktop:max-w-sm">
@@ -349,10 +368,9 @@ export function ProcessV4Page() {
         )}
 
         <p className="mt-4 text-sm text-grey-600">
-          {yourCount} card{yourCount === 1 ? "" : "s"} for {who}
-          {contextCount > 0
-            ? ` · ${contextCount} other ${contextCount === 1 ? "task" : "tasks"} in this phase`
-            : ""}
+          {seesEveryone
+            ? `${yourCount} ${who} ${yourCount === 1 ? "task" : "tasks"} you own · ${contextCount} other ${contextCount === 1 ? "task" : "tasks"} you can guide`
+            : `${yourCount} of your ${yourCount === 1 ? "task" : "tasks"} in this phase`}
           {showFull ? " · full catalogue" : ""}.
         </p>
       </section>
@@ -370,7 +388,7 @@ export function ProcessV4Page() {
                 {PHASES.map((p, i) => {
                   const isActive = p.id === activeId;
                   const count = JOURNEY_CARDS.filter(
-                    (c) => c.phase === p.id && cardApplies(c, ctx),
+                    (c) => c.phase === p.id && cardVisible(c, ctx),
                   ).length;
                   return (
                     <li key={p.id}>
