@@ -10,6 +10,7 @@ export function AppShell() {
   const [navCollapsed, setNavCollapsed] = useState(false);
   const location = useLocation();
   const isProcessGuide =
+    location.pathname === "/process-v4" ||
     location.pathname === "/process-v3" ||
     location.pathname === "/process-v2" ||
     location.pathname === "/process";
