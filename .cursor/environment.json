@@ -5,7 +5,7 @@
     {
       "name": "dev",
       "command": "npm run dev",
-      "description": "Vite dev server for the TeMPo prototype on port 5173 (Process v3 at /process-v3). The dev script binds all interfaces so 127.0.0.1 and forwarded ports work."
+      "description": "Vite dev server for the TeMPo prototype on port 5173 (Process card guide at /process-v4). The dev script binds all interfaces so 127.0.0.1 and forwarded ports work."
     }
   ],
   "ports": [
