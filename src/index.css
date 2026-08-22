@@ -241,9 +241,10 @@
 
   .dls-file-row,
   .dls-link-row {
-    display: flex;
-    align-items: center;
-    gap: 12px;
+    display: grid;
+    grid-template-columns: 20px minmax(0, 1fr);
+    align-items: start;
+    gap: 8px 12px;
     width: 100%;
     min-height: 48px;
     padding: 12px 0;
@@ -251,6 +252,22 @@
     text-align: left;
     background: transparent;
     color: var(--color-grey-700);
+  }
+
+  .dls-file-row .dls-file-action {
+    grid-column: 2;
+  }
+
+  @media (min-width: 768px) {
+    .dls-file-row {
+      grid-template-columns: 20px minmax(0, 1fr) auto;
+      align-items: center;
+    }
+
+    .dls-file-row .dls-file-action {
+      grid-column: 3;
+      grid-row: 1;
+    }
   }
 
   .dls-file-row:last-child,

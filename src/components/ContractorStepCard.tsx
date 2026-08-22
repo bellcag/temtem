@@ -127,11 +127,11 @@ export function ContractorStepCard({
                     <li key={item}>
                       <button type="button" className="dls-file-row">
                         <FileText className="h-5 w-5 shrink-0 text-purple-600" />
-                        <span className="min-w-0 flex-1 text-sm font-bold leading-[18px] desktop:text-base desktop:leading-5">
+                        <span className="min-w-0 text-sm font-bold leading-[18px] desktop:text-base desktop:leading-5">
                           {item}
                         </span>
-                        <span className="inline-flex shrink-0 items-center gap-1 text-sm font-bold text-purple-600">
-                          <Download className="h-3.5 w-3.5" />
+                        <span className="dls-file-action inline-flex items-center gap-1 text-sm font-bold text-purple-600">
+                          <Download className="h-3.5 w-3.5 shrink-0" />
                           {fileActionLabel(item)}
                         </span>
                       </button>
