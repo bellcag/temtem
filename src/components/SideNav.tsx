@@ -36,7 +36,7 @@ type NavItem = {
 
 const navItems: NavItem[] = [
   { to: "/", label: "Dashboard", icon: LayoutDashboard, end: true },
-  { to: "/process-v3", label: "Process", icon: Workflow },
+  { to: "/process-v4", label: "Process", icon: Workflow },
   { to: "/documents", label: "Document Library", icon: FolderOpen },
   {
     to: "/screener",
@@ -358,10 +358,11 @@ export function SideNav({
             );
           }
           const processActive =
-            item.to === "/process-v3" &&
+            item.to === "/process-v4" &&
             (location.pathname === "/process" ||
               location.pathname === "/process-v2" ||
-              location.pathname === "/process-v3");
+              location.pathname === "/process-v3" ||
+              location.pathname === "/process-v4");
           return (
             <NavLink
               key={item.to}
