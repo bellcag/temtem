@@ -33,7 +33,13 @@ import {
   tenantPathTotal,
   tenantStepsInPhase,
 } from "@/lib/tenant-path";
+import {
+  CONTRACTOR_PATH,
+  contractorPathTotal,
+  contractorStepsInPhase,
+} from "@/lib/contractor-path";
 import { TenantStepCard } from "@/components/TenantStepCard";
+import { ContractorStepCard } from "@/components/ContractorStepCard";
 import { cn } from "@/lib/utils";
 
 const LS_PHASE = "tempo:v4:phase";
@@ -109,6 +115,8 @@ export function ProcessV4Page() {
   const showFull = isOfficer && (processView === "full" || isUnscoped);
   const seesEveryone = isOfficer;
   const tenantMode = who === "Tenant";
+  const contractorMode = who === "Contractor";
+  const condensedMode = tenantMode || contractorMode;
 
   const ctx = {
     tenancyType: ctxUnit.tenancyType,
@@ -141,6 +149,25 @@ export function ProcessV4Page() {
     () => tenantStepsInPhase(activeId),
     [activeId],
   );
+  const contractorPhaseSteps = useMemo(
+    () => contractorStepsInPhase(activeId),
+    [activeId],
+  );
+  const condensedPhaseSteps = tenantMode
+    ? tenantPhaseSteps
+    : contractorMode
+      ? contractorPhaseSteps
+      : [];
+  const condensedPath = tenantMode
+    ? TENANT_PATH
+    : contractorMode
+      ? CONTRACTOR_PATH
+      : [];
+  const condensedTotal = tenantMode
+    ? tenantPathTotal()
+    : contractorMode
+      ? contractorPathTotal()
+      : 0;
 
   const journeyItems = useMemo<JourneyItem[]>(() => {
     return phaseCards.map((card) => ({
@@ -151,12 +178,12 @@ export function ProcessV4Page() {
 
   const yourItems = journeyItems.filter((i) => i.kind === "you");
   const startHere = yourItems[0] ?? journeyItems[0] ?? null;
-  const tenantStart = tenantPhaseSteps[0]?.id ?? null;
+  const condensedStart = condensedPhaseSteps[0]?.id ?? null;
 
-  const journeyKey = tenantMode
-    ? tenantPhaseSteps.map((s) => s.id).join(",")
+  const journeyKey = condensedMode
+    ? condensedPhaseSteps.map((s) => s.id).join(",")
     : journeyItems.map((i) => i.card.n).join(",");
-  const startN = tenantMode ? tenantStart : (startHere?.card.n ?? null);
+  const startN = condensedMode ? condensedStart : (startHere?.card.n ?? null);
   useEffect(() => {
     const ids = journeyKey ? journeyKey.split(",").map(Number) : [];
     setFocusedN((prev) => {
@@ -176,22 +203,27 @@ export function ProcessV4Page() {
       ? journeyItems[focusIndex + 1]
       : null;
 
-  const tenantFocus =
-    tenantPhaseSteps.find((s) => s.id === focusedN) ??
-    tenantPhaseSteps[0] ??
+  const condensedFocus =
+    condensedPhaseSteps.find((s) => s.id === focusedN) ??
+    condensedPhaseSteps[0] ??
     null;
-  const tenantFocusIndex = tenantFocus
-    ? tenantPhaseSteps.findIndex((s) => s.id === tenantFocus.id)
+  const condensedFocusIndex = condensedFocus
+    ? condensedPhaseSteps.findIndex((s) => s.id === condensedFocus.id)
     : -1;
-  const tenantPrev =
-    tenantFocusIndex > 0 ? tenantPhaseSteps[tenantFocusIndex - 1] : null;
-  const tenantNext =
-    tenantFocusIndex >= 0 && tenantFocusIndex < tenantPhaseSteps.length - 1
-      ? tenantPhaseSteps[tenantFocusIndex + 1]
+  const condensedPrev =
+    condensedFocusIndex > 0
+      ? condensedPhaseSteps[condensedFocusIndex - 1]
       : null;
-  const tenantNextAcross =
-    tenantNext ??
-    TENANT_PATH.find((s) => tenantFocus && s.id === tenantFocus.id + 1);
+  const condensedNext =
+    condensedFocusIndex >= 0 &&
+    condensedFocusIndex < condensedPhaseSteps.length - 1
+      ? condensedPhaseSteps[condensedFocusIndex + 1]
+      : null;
+  const condensedNextAcross =
+    condensedNext ??
+    condensedPath.find(
+      (s) => condensedFocus && s.id === condensedFocus.id + 1,
+    );
 
   const selectPhase = (id: PhaseId) => {
     setActiveId(id);
@@ -219,13 +251,15 @@ export function ProcessV4Page() {
     });
   };
 
-  const visibleStages = tenantMode
-    ? [...new Set(tenantPhaseSteps.map((s) => s.stage))]
+  const visibleStages = condensedMode
+    ? [...new Set(condensedPhaseSteps.map((s) => s.stage))]
     : stagesInPhase(activeId).filter((stage) =>
         journeyItems.some((i) => i.card.stage === stage),
       );
 
-  const yourCount = tenantMode ? tenantPhaseSteps.length : yourItems.length;
+  const yourCount = condensedMode
+    ? condensedPhaseSteps.length
+    : yourItems.length;
   const contextCount = journeyItems.length - yourItems.length;
 
   return (
@@ -233,7 +267,11 @@ export function ProcessV4Page() {
       <header className="mb-6 flex flex-wrap items-start justify-between gap-4">
         <div className="min-w-0 flex-1">
           <div className="mb-1 flex flex-wrap items-center gap-2">
-            <h1>Follow your renovation</h1>
+            <h1>
+              {contractorMode
+                ? "Your permit workbench"
+                : "Follow your renovation"}
+            </h1>
             <span className="inline-flex items-center rounded-[var(--radius-sm)] bg-grey-75 px-2 py-1 text-xs font-bold text-grey-700">
               Guide only
             </span>
@@ -241,7 +279,9 @@ export function ProcessV4Page() {
           <p className="mt-1 max-w-2xl text-sm leading-relaxed text-grey-500 desktop:text-base desktop:leading-5">
             {tenantMode
               ? "You'll only see your steps. Each card says where you are, when it happens, what to do, and what to open."
-              : "You'll only see the steps that are yours. If you're a Project Officer, you'll see everyone's steps so you can guide them."}
+              : contractorMode
+                ? "You'll only see your steps. Access, the permits that apply, one PTW submit, inspect, hoard, work, as-builts, defects, then reinstatement PTW."
+                : "You'll only see the steps that are yours. If you're a Project Officer, you'll see everyone's steps so you can guide them."}
           </p>
         </div>
       </header>
@@ -398,13 +438,13 @@ export function ProcessV4Page() {
         )}
 
         <p className="mt-4 text-sm text-grey-600">
-          {tenantMode
-            ? `You're on ${PHASE_FACE[activeId]?.name ?? activeId} — ${yourCount} of your ${yourCount === 1 ? "step" : "steps"} here, ${tenantPathTotal()} in the whole path.`
+          {condensedMode
+            ? `You're on ${PHASE_FACE[activeId]?.name ?? activeId} — ${yourCount} of your ${yourCount === 1 ? "step" : "steps"} here, ${condensedTotal} in the whole path.`
             : seesEveryone
               ? `You'll own ${yourCount} ${who} ${yourCount === 1 ? "step" : "steps"} here, and you can guide ${contextCount} more`
               : `You've got ${yourCount} ${yourCount === 1 ? "step" : "steps"} here`}
-          {!tenantMode && showFull ? ". This is every listed step" : ""}
-          {!tenantMode ? "." : ""}
+          {!condensedMode && showFull ? ". This is every listed step" : ""}
+          {!condensedMode ? "." : ""}
         </p>
       </section>
 
@@ -420,8 +460,10 @@ export function ProcessV4Page() {
               <ol>
                 {PHASES.map((p, i) => {
                   const isActive = p.id === activeId;
-                  const count = tenantMode
-                    ? tenantStepsInPhase(p.id).length
+                  const count = condensedMode
+                    ? tenantMode
+                      ? tenantStepsInPhase(p.id).length
+                      : contractorStepsInPhase(p.id).length
                     : JOURNEY_CARDS.filter(
                         (c) => c.phase === p.id && cardVisible(c, ctx),
                       ).length;
@@ -468,11 +510,11 @@ export function ProcessV4Page() {
                           {visibleStages.map((stage) => (
                             <div key={stage} className="mt-3">
                               <p className="mb-1 text-[11px] font-bold uppercase tracking-wider text-purple-700">
-                                {tenantMode ? stage : faceStage(stage)}
+                                {condensedMode ? stage : faceStage(stage)}
                               </p>
                               <ol className="space-y-0.5">
-                                {tenantMode
-                                  ? tenantPhaseSteps
+                                {condensedMode
+                                  ? condensedPhaseSteps
                                       .filter((s) => s.stage === stage)
                                       .map((s) => {
                                         const isFocused = s.id === focusedN;
@@ -586,54 +628,87 @@ export function ProcessV4Page() {
         </aside>
 
         <div className="min-w-0">
-          {tenantMode && !tenantFocus && (
+          {condensedMode && !condensedFocus && (
             <div className="rounded-[var(--radius-md)] border border-grey-100 bg-white px-4 py-8 text-center text-sm text-grey-500">
               There are no steps for you in{" "}
               {PHASE_FACE[activeId]?.name ?? activeId} on this unit.
             </div>
           )}
 
-          {tenantMode && tenantFocus && (
+          {tenantMode && condensedFocus && (
             <TenantStepCard
-              step={tenantFocus}
+              step={condensedFocus}
               showDetails={showDetails}
               onToggleDetails={() => setShowDetails((v) => !v)}
               onPrev={
-                tenantPrev
+                condensedPrev
                   ? () => {
-                      if (tenantPrev.phase !== activeId) {
-                        selectPhase(tenantPrev.phase);
+                      if (condensedPrev.phase !== activeId) {
+                        selectPhase(condensedPrev.phase);
                       }
-                      focusCard(tenantPrev.id);
+                      focusCard(condensedPrev.id);
                     }
                   : undefined
               }
               onNext={
-                tenantNextAcross
+                condensedNextAcross
                   ? () => {
-                      if (tenantNextAcross.phase !== activeId) {
-                        selectPhase(tenantNextAcross.phase);
+                      if (condensedNextAcross.phase !== activeId) {
+                        selectPhase(condensedNextAcross.phase);
                       }
-                      focusCard(tenantNextAcross.id);
+                      focusCard(condensedNextAcross.id);
                     }
                   : undefined
               }
               nextTitle={
-                tenantNextAcross
-                  ? tenantNextAcross.title
+                condensedNextAcross
+                  ? condensedNextAcross.title
                   : "You've reached the last step in this guide."
               }
             />
           )}
 
-          {!tenantMode && !focused && (
+          {contractorMode && condensedFocus && (
+            <ContractorStepCard
+              step={condensedFocus}
+              showDetails={showDetails}
+              onToggleDetails={() => setShowDetails((v) => !v)}
+              onPrev={
+                condensedPrev
+                  ? () => {
+                      if (condensedPrev.phase !== activeId) {
+                        selectPhase(condensedPrev.phase);
+                      }
+                      focusCard(condensedPrev.id);
+                    }
+                  : undefined
+              }
+              onNext={
+                condensedNextAcross
+                  ? () => {
+                      if (condensedNextAcross.phase !== activeId) {
+                        selectPhase(condensedNextAcross.phase);
+                      }
+                      focusCard(condensedNextAcross.id);
+                    }
+                  : undefined
+              }
+              nextTitle={
+                condensedNextAcross
+                  ? condensedNextAcross.title
+                  : "You've reached the last step in this guide."
+              }
+            />
+          )}
+
+          {!condensedMode && !focused && (
             <div className="rounded-[var(--radius-md)] border border-grey-100 bg-white px-4 py-8 text-center text-sm text-grey-500">
               There are no steps for you in{" "}
               {PHASE_FACE[activeId]?.name ?? activeId} on this unit.
             </div>
           )}
 
-          {!tenantMode && focused && (
+          {!condensedMode && focused && (
             <StepCard
               item={focused}
               showDetails={showDetails}
