@@ -1,6 +1,6 @@
 # TeMPo prototype
 
-Standalone copy of the Tenant Management Portal prototype (Vite + React + Tailwind + Runway tokens). Process v3 lives at `/process-v3`.
+Standalone copy of the Tenant Management Portal prototype (Vite + React + Tailwind + Runway tokens). Latest Process guide: **`/process-v16`**.
 
 ## Run as its own app
 
@@ -9,7 +9,7 @@ npm install
 npm run dev
 ```
 
-Open http://127.0.0.1:5173/process-v3
+Open http://127.0.0.1:5173/process-v16?phase=setup
 
 ## Bring into another repo
 

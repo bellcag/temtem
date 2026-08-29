@@ -13,6 +13,8 @@ export function TenantStepCard({
   onPrev,
   onNext,
   nextTitle,
+  phaseStep,
+  phaseTotal,
 }: {
   step: TenantPathStep;
   showDetails: boolean;
@@ -20,6 +22,8 @@ export function TenantStepCard({
   onPrev?: () => void;
   onNext?: () => void;
   nextTitle?: string;
+  phaseStep?: number;
+  phaseTotal?: number;
 }) {
   const total = tenantPathTotal();
   const shownRules = step.rules.filter((r) =>
@@ -29,6 +33,7 @@ export function TenantStepCard({
     !showDetails && step.rules.length > 3
       ? step.rules.filter((r) => r.rank === "only-if")
       : [];
+  const phaseLabel = PHASE_FACE[step.phase]?.name ?? step.phase;
 
   return (
     <article
@@ -43,10 +48,12 @@ export function TenantStepCard({
       <header className="border-b border-grey-75 pb-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="rounded-[var(--radius-sm)] bg-purple-600 px-2 py-0.5 text-[11px] font-bold text-white">
-            You&apos;re on {step.id} of {total}
+            {phaseStep && phaseTotal
+              ? `${phaseStep} of ${phaseTotal} in ${phaseLabel}`
+              : `You're on ${step.id} of ${total}`}
           </span>
           <span className="text-[11px] font-bold uppercase tracking-wider text-grey-500">
-            {PHASE_FACE[step.phase]?.name ?? step.phase}
+            Path step {step.id} of {total}
           </span>
           <span className="rounded-[var(--radius-sm)] bg-grey-75 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wider text-grey-700">
             {step.stage}
@@ -194,10 +201,14 @@ export function TenantStepCard({
           type="button"
           disabled={!onNext}
           onClick={onNext}
-          className="inline-flex items-center gap-1 text-sm font-bold text-purple-700 disabled:text-grey-300"
+          className="inline-flex max-w-[70%] items-center gap-1 text-right text-sm font-bold text-purple-700 disabled:text-grey-300"
         >
-          Continue
-          <ChevronRight className="h-4 w-4" />
+          <span className="min-w-0 truncate">
+            {onNext && nextTitle
+              ? `Continue to ${nextTitle}`
+              : "Continue"}
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0" />
         </button>
       </footer>
     </article>

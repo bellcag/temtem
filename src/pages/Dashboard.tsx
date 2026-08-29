@@ -164,7 +164,7 @@ export function DashboardPage() {
           {PHASES.map((p, i) => (
             <Link
               key={p.id}
-              to={`/process-v4?phase=${p.id}`}
+              to={`/process-v16?phase=${p.id}`}
               className="group rounded-[var(--radius-2xl)] border border-grey-100 bg-white p-5 transition hover:border-purple-300"
             >
               <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-grey-500">
@@ -184,7 +184,7 @@ export function DashboardPage() {
         </div>
         <div className="mt-4 flex justify-end">
           <Link
-            to="/process-v4"
+            to="/process-v16"
             className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-purple-600 px-4 py-2 text-sm font-bold text-white hover:bg-purple-700"
           >
             View Full Process <ArrowRight className="h-4 w-4" />

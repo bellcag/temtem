@@ -6,6 +6,7 @@ import { ProcessPage } from "@/pages/Process";
 import { ProcessV2Page } from "@/pages/ProcessV2";
 import { ProcessV3Page } from "@/pages/ProcessV3";
 import { ProcessV4Page } from "@/pages/ProcessV4";
+import { ProcessV16Page } from "@/pages/ProcessV16";
 import {
   AppsPage,
   ContactsPage,
@@ -26,6 +27,7 @@ export default function App() {
             <Route path="process-v2" element={<ProcessV2Page />} />
             <Route path="process-v3" element={<ProcessV3Page />} />
             <Route path="process-v4" element={<ProcessV4Page />} />
+            <Route path="process-v16" element={<ProcessV16Page />} />
             <Route path="documents" element={<DocumentsPage />} />
             <Route path="documents/:id" element={<DocumentDetailPage />} />
             <Route path="apps" element={<AppsPage />} />

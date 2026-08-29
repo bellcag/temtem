@@ -31,6 +31,8 @@ export function ContractorStepCard({
   onPrev,
   onNext,
   nextTitle,
+  phaseStep,
+  phaseTotal,
 }: {
   step: ContractorPathStep;
   showDetails: boolean;
@@ -38,6 +40,8 @@ export function ContractorStepCard({
   onPrev?: () => void;
   onNext?: () => void;
   nextTitle?: string;
+  phaseStep?: number;
+  phaseTotal?: number;
 }) {
   const total = contractorPathTotal();
   const shownRules = step.rules.filter((r) =>
@@ -49,6 +53,7 @@ export function ContractorStepCard({
       : [];
   const fileNeeds = step.needs.filter(isFileNeed);
   const otherNeeds = step.needs.filter((item) => !isFileNeed(item));
+  const phaseLabel = PHASE_FACE[step.phase]?.name ?? step.phase;
 
   return (
     <article
@@ -63,9 +68,11 @@ export function ContractorStepCard({
       <header className="border-b border-grey-100 pb-4">
         <div className="flex flex-wrap items-center gap-2">
           <span className="dls-status-chip bg-purple-100 text-purple-700">
-            You&apos;re on {step.id} of {total}
+            {phaseStep && phaseTotal
+              ? `${phaseStep} of ${phaseTotal} in ${phaseLabel}`
+              : `You're on ${step.id} of ${total}`}
           </span>
-          <span className="dls-caption">{PHASE_FACE[step.phase]?.name ?? step.phase}</span>
+          <span className="dls-caption">Path step {step.id} of {total}</span>
           <span className="dls-attr-chip">{step.stage}</span>
           {step.wait && (
             <span className="dls-status-chip bg-grey-75 text-grey-600">
@@ -237,10 +244,14 @@ export function ContractorStepCard({
           type="button"
           disabled={!onNext}
           onClick={onNext}
-          className="dls-btn-primary"
+          className="dls-btn-primary max-w-[70%]"
         >
-          Continue
-          <ChevronRight className="h-4 w-4" />
+          <span className="min-w-0 truncate">
+            {onNext && nextTitle
+              ? `Continue to ${nextTitle}`
+              : "Continue"}
+          </span>
+          <ChevronRight className="h-4 w-4 shrink-0" />
         </button>
       </footer>
     </article>
