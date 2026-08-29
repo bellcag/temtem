@@ -87,7 +87,10 @@ export function ProcessV16Page() {
 
   const [params, setParams] = useSearchParams();
   const [who, setWho] = useState<Stakeholder>(roleFromApp(role));
-  const [activeId, setActiveId] = useState<PhaseId>("Setup");
+  const [activeId, setActiveId] = useState<PhaseId>(() => {
+    const raw = (params.get("phase") ?? "").toLowerCase();
+    return PHASES.find((p) => p.id.toLowerCase() === raw)?.id ?? "Setup";
+  });
   const [focusedN, setFocusedN] = useState<number | null>(null);
   const [showDetails, setShowDetails] = useState(false);
 
@@ -95,29 +98,24 @@ export function ProcessV16Page() {
     setWho(roleFromApp(role));
   }, [role]);
 
+  // URL is the source of truth for phase when ?phase= is present.
   useEffect(() => {
     const raw = (params.get("phase") ?? "").toLowerCase();
     const fromUrl = PHASES.find((p) => p.id.toLowerCase() === raw);
     if (fromUrl) {
       setActiveId(fromUrl.id);
+      window.localStorage.setItem(LS_PHASE, fromUrl.id);
       return;
     }
+    // Seed a shareable phase into the URL once if missing.
     const saved = window.localStorage.getItem(LS_PHASE) as PhaseId | null;
-    if (saved && PHASES.some((p) => p.id === saved)) {
-      setActiveId(saved);
-      return;
-    }
-    setActiveId("Setup");
-  }, [params]);
-
-  // Keep ?phase= in the URL so Setup (and other phases) stay shareable.
-  useEffect(() => {
-    const current = (params.get("phase") ?? "").toLowerCase();
-    if (current === activeId.toLowerCase()) return;
+    const seed =
+      saved && PHASES.some((p) => p.id === saved) ? saved : ("Setup" as PhaseId);
+    setActiveId(seed);
     const next = new URLSearchParams(params);
-    next.set("phase", activeId.toLowerCase());
+    next.set("phase", seed.toLowerCase());
     setParams(next, { replace: true });
-  }, [activeId, params, setParams]);
+  }, [params, setParams]);
 
   useEffect(() => {
     const next = !isOfficer ? "my-unit" : isUnscoped ? "full" : "my-unit";
