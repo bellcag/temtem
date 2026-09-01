@@ -45,13 +45,16 @@ export function unitFromSelection(sel: Selection, company: string): Unit {
       u.tenancyType === sel.tenancyType &&
       u.zone === "Airside",
   );
+  if (match) {
+    return { ...match, company: match.company ?? company };
+  }
   return {
     id: `sel-${sel.terminal}-${sel.tenancyType}-Airside`,
-    unitNo: match?.unitNo ?? `${sel.terminal}-AS`,
+    unitNo: `${sel.terminal}-AS`,
     terminal: sel.terminal,
     tenancyType: sel.tenancyType,
     zone: "Airside",
-    company: match?.company ?? company,
+    company,
   };
 }
 
@@ -92,15 +95,39 @@ type AppState = {
 const Ctx = createContext<AppState | null>(null);
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
-  const [role, setRole] = useState<Role>("tenant");
+  const [role, setRoleState] = useState<Role>(() => {
+    try {
+      const saved = window.localStorage.getItem("tempo:role");
+      if (
+        saved === "tenant" ||
+        saved === "contractor" ||
+        saved === "officer"
+      ) {
+        return saved;
+      }
+    } catch {
+      /* ignore */
+    }
+    return "contractor";
+  });
+  const setRole = useCallback((r: Role) => {
+    setRoleState(r);
+    try {
+      window.localStorage.setItem("tempo:role", r);
+    } catch {
+      /* ignore */
+    }
+  }, []);
   const [selection, setSelectionState] = useState<Selection>({
     terminal: "T3",
     tenancyType: "F&B",
     zone: "Airside",
   });
-  const [officerSelection, setOfficerSelection] = useState<Selection | null>(
-    null,
-  );
+  const [officerSelection, setOfficerSelection] = useState<Selection | null>({
+    terminal: "T3",
+    tenancyType: "F&B",
+    zone: "Airside",
+  });
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantSeed, setAssistantSeed] = useState<string | null>(null);
   const [assistantContext, setAssistantContext] =
@@ -178,7 +205,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   );
   const closeAssistant = useCallback(() => setAssistantOpen(false), []);
   const trackDoc = useCallback((id: string) => {
-    setRecentDocs((prev) => [id, ...prev.filter((x) => x !== id)].slice(0, 5));
+    setRecentDocs((prev) => {
+      if (prev[0] === id) return prev;
+      return [id, ...prev.filter((x) => x !== id)].slice(0, 5);
+    });
   }, []);
 
   const setStepStatus = useCallback(

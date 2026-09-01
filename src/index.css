@@ -24,6 +24,11 @@
   --color-grey-800: #2f2f2f;
   --color-grey-900: #222222;
 
+  /* Colors/Blue — Status Chip (Neutral) */
+  --color-blue-100: #f3f7fb;
+  --color-blue-600: #0057b8;
+  --color-blue-700: #0049a8;
+
   /* Colors/Purple Primary */
   --color-purple-100: #f9f5fc;
   --color-purple-200: #ece0f5;
@@ -38,7 +43,9 @@
   /* Semantic */
   --color-error-600: #cc1000;
   --color-error-100: #fff6f5;
+  --color-warning-800: #c65d00;
   --color-warning-600: #f2721b;
+  --color-warning-200: #fce1b6;
   --color-warning-100: #fef5e7;
   --color-success-600: #008545;
   --color-success-100: #f3f9f3;
@@ -66,6 +73,10 @@
 
   --font-sans: "Lato", sans-serif;
   --shadow-light-bg: 0px 6px 20px rgba(18, 18, 18, 0.08);
+  /* Runway DLS — Changi App (Light): #f3f0f7 → #fcfcfc */
+  --gradient-light: linear-gradient(180deg, #f3f0f7 0%, #fcfcfc 100%);
+  /* Runway DLS — Changi App (Light purple): #c986ff → #ddc2ff */
+  --gradient-light-purple: linear-gradient(135deg, #c986ff 0%, #ddc2ff 100%);
 }
 
 /* Runway spacing tokens (4px grid) — use via var(--spacing-*) in layout shells */
@@ -88,6 +99,28 @@
   body,
   #root {
     height: 100%;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  /* html-to-design: unclip nested scroll so the full Process card stack is in the document */
+  html.figma-full,
+  html.figma-full body,
+  html.figma-full #root {
+    height: auto !important;
+    min-height: 100%;
+    overflow: visible !important;
+  }
+
+  html.figma-full [data-figma-unclip],
+  html.figma-full #tempo-sidenav {
+    position: static !important;
+    top: auto !important;
+    max-height: none !important;
+    height: auto !important;
+    overflow: visible !important;
+    align-self: stretch;
   }
 
   body {
@@ -181,4 +214,50 @@
   textarea {
     font-family: inherit;
   }
+}
+
+/* Search card: Light purple at the title, Purple 400 at the chips. */
+.process-search-card {
+  background: linear-gradient(
+    160deg,
+    #ddc2ff 0%,
+    #c986ff 52%,
+    var(--color-purple-400) 100%
+  );
+}
+
+.process-search-sticky.is-stuck {
+  background-color: #f7f7f7;
+}
+
+@media (min-width: 768px) {
+  .process-search-sticky.is-stuck {
+    display: none;
+  }
+}
+
+/* Mobile quick links: one swipable row, no wrap. */
+.process-chip-scroll {
+  -webkit-overflow-scrolling: touch;
+  scrollbar-width: none;
+}
+.process-chip-scroll::-webkit-scrollbar {
+  display: none;
+}
+
+@media (max-width: 767px) {
+  .process-chip-scroll {
+    -webkit-overflow-scrolling: touch;
+  }
+}
+
+/* process-v8: hover matches the selected card, not just a focus ring */
+.v8-path-step:hover {
+  box-shadow: 0 0 0 4px rgba(158, 119, 237, 0.24);
+}
+
+.v8-path-step:hover .v8-step-index {
+  background-color: var(--color-purple-100);
+  color: var(--color-purple-700);
+  box-shadow: 0 0 0 2px #7a35b0;
 }
