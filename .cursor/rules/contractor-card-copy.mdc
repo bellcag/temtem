@@ -1,0 +1,65 @@
+---
+description: Card lines — 4–10 words, that reader’s task only
+globs: src/lib/process-v10-copy.ts,src/lib/tenancy-data.ts,src/lib/process-planned-works-quiz.ts,src/pages/ProcessV16.tsx
+alwaysApply: false
+---
+
+# Card copy (all roles)
+
+Follow this for **every** visible line: lifeSg `title` / `subheader` / `how`, catalogue `whatFor`, permit pack rows, quiz card points.
+
+`title` is the **topic** of the card: **3–5 words**. Name the subject. Do not restate the bullets (no verb + same job). Same title for every role when it is the same piece of content. No catalogue-speak (“Shared”, “Gathered”, “Confirmation of”).
+
+`lead` is a **2–4 word** action line under the title. Verb first. Same job as the bullets, compressed. Do **not** replace the bullets. Write three versions — tenant, contractor, Project Officer.
+
+Bullets stay the task lines. Write **three** versions of each card’s bullets — tenant, contractor, Project Officer. Same job. That reader’s moves only.
+
+Keys in `process-v10-copy.ts` must match catalogue `stage.name::step.name` exactly. A missed key falls back to a long paragraph — that is a fail.
+
+## Prompt
+
+Rewrite each line for a busy reader who is not fluent in English. The reader is the **current login**: tenant, contractor, or Project Officer.
+
+**Pass only if all are true:**
+
+1. First word is **their** verb: Go, Be, Bring, Fill, Apply, Create, Book, Ask, Send, Email, Submit, Install, Upload, Fix, Measure, Confirm, Use, Read, Do, Get, Leave, Note, Select, Approve, Register, Present, Walk, Collect, Sign, Lodge, Complete, Hand, Settle, Attend, Revise, Remind, Advise, Compile, Share, Check, Schedule, Tell, Start, Link, Monitor, Issue, Review, Notify, Update, Request.
+2. **4–10 words.** Count. Prefer 7–8. Cut extras.
+3. **They do this.** Not someone else. Fold a handoff into Get (it arrives to them) or Check (they can look in a named system). Never “Wait for…” — it sounds like nothing to do. Never “X sends…”, “X will…”, “sits with…”, “You’ll get…”, “You do not…”.
+4. Same sitting, same verb, same system = **one point**. Example: apply for terminal access and unit access → “Apply for terminal and unit access in OneCalendar.” Split only when the actor, system, or wait changes.
+5. Simple words. No “so that”, “in order to”, “if you can”, “kindly”.
+6. You / your. Calm supervisor. No slang. No legal.
+7. Keep names they must open: OneCalendar, IFM, AES, Project Officer, TOPAZ, URA. Officer may name CAG-internal tools they use (OneDrive, Newforma, SharePoint, Key Management System, Procurement). Never show those tools to tenant or contractor.
+8. That meeting’s title is **KickOff meeting** (the term they use). Never bare “kickoff”. Stage chrome may still say Kickoff.
+9. Do not invent steps or slugs. Same job, fewer words.
+10. One bullet = one move for **this** reader. Lists of drawings, report types, or pack contents are not tasks — fold them.
+
+Fail and rewrite: starts with a name or “You will”; explains someone else; two different jobs; over 10 words; “You do not…”.
+
+## Role
+
+- **Tenant** — their apply / approve / send / attend / lodge. If they only receive, one Get line with who or where (`hideOnlyIf` if they have no move). Check if they can look in a system.
+- **Contractor** — site and OneCalendar moves. Never tenancy/ops cards already `hideFrom: ["contractor"]`.
+- **Project Officer** — their compile / advise / schedule / approve / send. Internal retrieve is allowed. If IFM or AES does the work, one Check/Get line — do not narrate their job.
+
+## Good
+
+- Title: OneCalendar for the unit. Bullet: Approve unit access in OneCalendar when asked.
+- Title: Design pack approval. Same title for tenant, contractor, and Project Officer.
+- Approve unit access in OneCalendar when asked.
+- Apply for terminal and unit access in OneCalendar.
+- Create tenant, brand, and outlet records in OneCalendar.
+- Go to the first site meeting when invited.
+- Send one design pack to your Project Officer.
+- Get written design approval before permits.
+- Submit all remaining permits together in OneCalendar.
+- Walk the unit with IFM at handover.
+
+## Bad
+
+- Your contractor applies in OneCalendar. You’ll approve their unit access.
+- Apply for terminal access in OneCalendar. / Apply for unit access in OneCalendar.
+- Project Officer sends the time and place.
+- You’ll get the kickoff pack before site requirements are confirmed.
+- Coloured perspectives / Architectural plans / Ceiling layout (inventory, not tasks)
+- Building Maintenance will endorse the form.
+- You do not submit these yourself.

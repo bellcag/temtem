@@ -3,16 +3,16 @@ import { Outlet, useLocation } from "react-router-dom";
 import { Menu, X } from "lucide-react";
 import { SideNav } from "@/components/SideNav";
 import { AssistantPanel } from "@/components/AssistantPanel";
+import { useFigmaFullCapture } from "@/lib/figma-capture";
 import { cn } from "@/lib/utils";
+import logoMobile from "@/assets/figma-setup/logo-mobile.svg";
 
 export function AppShell() {
   const [navOpen, setNavOpen] = useState(false);
   const [navCollapsed, setNavCollapsed] = useState(false);
   const location = useLocation();
-  const isProcessGuide =
-    location.pathname === "/process-v3" ||
-    location.pathname === "/process-v2" ||
-    location.pathname === "/process";
+  const figmaFull = useFigmaFullCapture();
+  const isProcessGuide = location.pathname.startsWith("/process");
 
   // Close mobile drawer on route change
   useEffect(() => {
@@ -35,7 +35,12 @@ export function AppShell() {
   }, [navOpen]);
 
   return (
-    <div className="flex h-full min-h-0 bg-grey-50">
+    <div
+      className={cn(
+        "flex bg-grey-50",
+        figmaFull ? "min-h-full" : "h-full min-h-0",
+      )}
+    >
       {/* iPhone top bar — Tablet+ uses persistent SideNav */}
       <header className="fixed inset-x-0 top-0 z-40 flex h-14 items-center gap-3 border-b border-grey-100 bg-white px-4 tablet:hidden">
         <button
@@ -48,14 +53,11 @@ export function AppShell() {
           {navOpen ? <X className="h-5 w-5" /> : <Menu className="h-5 w-5" />}
           <span className="sr-only">{navOpen ? "Close menu" : "Open menu"}</span>
         </button>
-        <div className="flex items-center gap-2">
-          <div className="grid h-7 w-7 place-items-center rounded-[var(--radius-sm)] bg-purple-600 text-xs font-black text-white">
-            T
-          </div>
-          <span className="text-base font-black tracking-tight text-black">
-            TeMPo
-          </span>
-        </div>
+        <img
+          src={logoMobile}
+          alt="CHANGI airport group"
+          className="block h-7 w-auto"
+        />
       </header>
 
       {navOpen && (
@@ -82,10 +84,19 @@ export function AppShell() {
         />
       </div>
 
-      <main className="min-w-0 flex-1 overflow-y-auto pt-14 tablet:pt-0">
+      <main
+        className={cn(
+          "min-w-0 flex-1 pt-14 tablet:pt-0",
+          figmaFull ? "overflow-visible" : "overflow-y-auto",
+        )}
+      >
         <Outlet />
       </main>
-      <AssistantPanel />
+      {!figmaFull && (
+        <div className="hidden h-full desktop:contents">
+          <AssistantPanel />
+        </div>
+      )}
     </div>
   );
 }

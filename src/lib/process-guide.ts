@@ -1,5 +1,6 @@
 import type {
   Audience,
+  AudienceRole,
   DocItem,
   Phase,
   Stage,
@@ -134,9 +135,133 @@ export function isMyAction(role: Role, audience: Audience): boolean {
   return false;
 }
 
+/**
+ * Lines this login should follow on the card.
+ * If they have no actions, use wait/receive notes written for them
+ * (`alsoText`) — never another actor’s how-to.
+ */
+export function notesYouFollow(
+  mine: SubStep[],
+  others: SubStep[],
+  role: Role,
+): SubStep[] {
+  if (mine.length > 0) return mine;
+  const notes: SubStep[] = [];
+  const seen = new Set<string>();
+  for (const s of others) {
+    const note = s.alsoText?.[role];
+    if (!note || seen.has(note)) continue;
+    seen.add(note);
+    notes.push({ ...s, text: note, audience: role });
+  }
+  return notes;
+}
+
+/** Handoff copy for this reader — never another role’s “you”. */
+export function handoffText(sub: SubStep, role?: Role): string | undefined {
+  if (!sub.alsoText || !role) return undefined;
+  return sub.alsoText[role];
+}
+
+function isOfficerOnly(audience: Audience): boolean {
+  return audience === "officer";
+}
+
+function copyMisaddressesReader(text: string, role: Role): boolean {
+  const t = text.toLowerCase();
+  if (role === "contractor" && (/\byour contractor\b/.test(t) || t.includes("you can follow along"))) {
+    return true;
+  }
+  if (role === "tenant" && /\byour tenant\b/.test(t)) return true;
+  return false;
+}
+
+function audienceRoles(audience: Audience): AudienceRole[] {
+  if (audience === "shared") return [];
+  return Array.isArray(audience) ? audience : [audience];
+}
+
+/** PO reading someone else’s task — never that actor’s “you” instructions. */
+function officerAlsoHappeningLine(sub: SubStep): string {
+  if (sub.audience === "shared") return sub.text;
+  if (sub.alsoText?.officer) return sub.alsoText.officer;
+  const actors = audienceRoles(sub.audience);
+  const t = sub.alsoText;
+  if (t) {
+    if (actors.includes("contractor") && t.tenant) return t.tenant;
+    if (actors.includes("tenant") && t.contractor) return t.contractor;
+    return t.tenant ?? t.contractor ?? sub.text;
+  }
+  return sub.text;
+}
+
+/** Wait/receive line for this reader. Null = omit — copy would address the wrong login. */
+export function alsoHappeningText(sub: SubStep, role: Role): string | null {
+  if (role === "officer") return officerAlsoHappeningLine(sub);
+  const handoff = handoffText(sub, role);
+  if (handoff) return handoff;
+  // PO-only how-to (sourcing, internal ops) stays in the PO view.
+  if (isOfficerOnly(sub.audience)) return null;
+  if (copyMisaddressesReader(sub.text, role)) return null;
+  return sub.text;
+}
+
+export function visibleAlsoSubs(subs: SubStep[], role: Role): SubStep[] {
+  if (role === "officer") return subs;
+  return subs.filter((s) => alsoHappeningText(s, role) != null);
+}
+
 export function displayText(sub: SubStep, mine: boolean, role?: Role) {
-  if (mine || role === "officer") return sub.text;
-  return sub.alsoText ?? sub.text;
+  if (mine) return sub.text;
+  if (!role) return sub.text;
+  return alsoHappeningText(sub, role) ?? sub.text;
+}
+
+const NOT_A_SYSTEM = new Set([
+  "hard disk",
+  "physical board",
+  "walk-in",
+  "meeting",
+  "whatsapp",
+  "teams",
+  "excel",
+]);
+
+/** CAG-internal tools. Tenant and contractor never see these chips. */
+export const CAG_INTERNAL_SYSTEMS = new Set([
+  "onedrive",
+  "newforma",
+  "sharepoint",
+  "hard disk",
+  "customer discovery insights",
+  "key management system",
+  "procurement",
+  "tenant directory taxonomy",
+]);
+
+export function systemsVisibleToRole(
+  systems: { label: string }[] | undefined,
+  role: Role,
+): { label: string }[] {
+  const cleaned = (systems ?? []).filter(
+    (s) => !NOT_A_SYSTEM.has(s.label.toLowerCase()),
+  );
+  if (role === "officer") return cleaned;
+  return cleaned.filter((s) => !CAG_INTERNAL_SYSTEMS.has(s.label.toLowerCase()));
+}
+
+const PERSON_FOR_ROLE: Record<AudienceRole, string> = {
+  tenant: "Tenant",
+  contractor: "Contractor",
+  officer: "Project Officer",
+};
+
+/** People chips that belong on this task line (login roles only). */
+export function peopleForSubStep(sub: SubStep, people: string[]): string[] {
+  if (sub.audience === "shared") return [];
+  const roles = Array.isArray(sub.audience) ? sub.audience : [sub.audience];
+  const wanted = new Set(roles.map((r) => PERSON_FOR_ROLE[r]));
+  return people.filter((p) => wanted.has(p));
 }
 
 export function partitionGuide(subs: SubStep[], role: Role) {
@@ -173,7 +298,7 @@ export function groupGuideBlocks(subs: SubStep[]) {
 
 /**
  * A step stays in the rail if the unit has any tasks in it.
- * Role never drops the chapter — empty-for-this-login becomes a handoff.
+ * `hideFrom` drops tenancy / ops chapters this login does not do.
  */
 export function classifyStep(
   step: Step,
@@ -182,6 +307,7 @@ export function classifyStep(
   terminal?: string,
   _showFull?: boolean,
 ): ClassifiedStep | null {
+  if (step.hideFrom?.includes(role)) return null;
   const unit = resolveUnit(tenancyTypeOrUnit, terminal);
   const subs = step.subSteps.filter((s) => tagAppliesToUnit(s.tag, unit));
   if (subs.length === 0) return null;
@@ -224,84 +350,94 @@ export function countYourSteps(
 }
 
 export function phasesForUnit(unit: Unit, phases: Phase[] = PHASES): Phase[] {
-  const profile = unitProfile(unit);
-  return phases.filter((phase) => {
-    if (phase.id === "exit" && !profile.outgoing) return false;
-    return phase.stages.some((stage) => classifyStage(stage, "officer", unit).steps.length > 0);
-  });
+  return phases.filter((phase) =>
+    phase.stages.some((stage) => classifyStage(stage, "officer", unit).steps.length > 0),
+  );
 }
 
 export function alsoLine(c: ClassifiedStep, role: Role) {
-  const fromOthers = c.others[0];
-  if (fromOthers) return displayText(fromOthers, false);
+  const fromOthers = visibleAlsoSubs(c.others, role)[0];
+  if (fromOthers) return displayText(fromOthers, false, role);
   const fromMine = c.mine[0];
-  if (fromMine) return displayText(fromMine, true);
+  if (fromMine) return displayText(fromMine, true, role);
   return stepWhat(c.step, role);
 }
 
-export function primarySystemLink(step: Step, subs: SubStep[]) {
-  if (!step.systems?.length) return null;
+export function primarySystemLink(step: Step, subs: SubStep[], role: Role = "officer") {
+  const systems = systemsVisibleToRole(step.systems, role);
+  if (!systems.length) return null;
   const blob = subs.map((s) => s.text.toLowerCase()).join(" ");
   const preferred = ["OneCalendar", "TOPAZ", "Lease Management System", "WebEpic"];
   for (const label of preferred) {
-    const hit = step.systems.find((s) => s.label === label);
+    const hit = systems.find((s) => s.label === label);
     if (hit && blob.includes(label.toLowerCase())) return hit;
   }
-  const named = step.systems.find((s) => blob.includes(s.label.toLowerCase()));
+  const named = systems.find((s) => blob.includes(s.label.toLowerCase()));
   return named ?? null;
 }
+
+/**
+ * CAG unit drawings and the provision list are not in the portal.
+ * Project Officers email them (drawings after division reps pull from Newforma;
+ * provision list from Airport Planning).
+ * Fire Safety Requirements is a section inside Renovation Requirements, not its own file.
+ */
+const NOT_IN_PORTAL = new Set(["doc-me", "doc-fire", "doc-provision"]);
 
 /** Library docs to surface on each Process guide step (by step name). */
 const STEP_DOC_IDS: Record<string, string[]> = {
   "Kickoff Documents Gathered & Shared": [
     "doc-provision",
-    "doc-me",
     "doc-renovation",
-    "doc-fire",
     "doc-elec",
   ],
   "High-Level Design Review": ["doc-design"],
   "Requirements & Plan Alignment": [
     "doc-renovation",
-    "doc-fire",
     "doc-provision",
-    "doc-me",
   ],
   "Onboarding Guidelines Shared": [
     "doc-renovation",
-    "doc-jsi",
-    "doc-fire",
     "doc-design",
-    "doc-sfa",
   ],
   "Confirmation of Renovation Plans": ["doc-design", "doc-hoarding"],
-  "Permit Selection & Document Preparation": [
+  "Permit Advisory & Tenancy Project Selection": [
+    "doc-renovation",
     "doc-method",
     "doc-hoarding",
-    "doc-fire",
     "doc-elec",
   ],
-  "Joint Site Inspection": ["doc-jsi", "doc-fire"],
-  "Supporting Document Submission": [
+  "Joint Site Inspection": ["doc-jsi", "doc-renovation"],
+  "Submit Combined Permit To Work Application": [
+    "doc-renovation",
     "doc-method",
     "doc-hoarding",
-    "doc-fire",
   ],
-  "Multi-Party Review by CAG Stakeholders": ["doc-fire", "doc-method"],
-  "Fire Safety Authority Assessment": ["doc-fire"],
-  "Site Handover & Sign-Off": ["doc-handover", "doc-provision", "doc-me"],
-  "IFM Pre-Renovation Briefing": ["doc-renovation", "doc-fire"],
-  "Pre-Renovation Works": ["doc-hoarding", "doc-method"],
-  "Renovation Works": ["doc-method", "doc-fire", "doc-elec", "doc-renovation"],
-  "Pre-Opening Checks & Certifications": ["doc-poi", "doc-cof", "doc-sfa"],
+  "Multi-Party Review by Changi Airport Group Stakeholders": [
+    "doc-renovation",
+    "doc-method",
+  ],
+  "Site Walkthrough, Technical Verification & Handover Sign Off": [
+    "doc-handover",
+    "doc-provision",
+  ],
+  "Integrated Facilities Management Pre-Renovation Briefing": [
+    "doc-renovation",
+  ],
+  "Airport Passes & Hoarding Installation": ["doc-hoarding", "doc-method"],
+  "Renovation Works & Site Monitoring": ["doc-method", "doc-elec", "doc-renovation"],
+  "Pre-Opening Inspection": ["doc-poi", "doc-cof", "doc-sfa"],
   "Opening Document Submission": ["doc-cof", "doc-sfa", "doc-poi"],
-  "TOPAZ Account Setup": ["doc-topaz"],
+  "Opening::TOPAZ Account Setup": ["doc-topaz"],
   "Regular Servicing Reporting": ["doc-topaz", "doc-cof"],
-  "Staff Fire Safety Declaration": ["doc-fire", "doc-cof"],
-  "Unit Documents Gathered & Shared": ["doc-provision", "doc-me", "doc-renovation"],
-  "Reinstatement Requirements Alignment": ["doc-renovation", "doc-me"],
-  "Reinstatement Permit Submission": ["doc-method", "doc-hoarding", "doc-fire"],
-  "Reinstatement Multi-Party Review": ["doc-method", "doc-fire"],
+  "Annual Fire Safety Declaration & Training": ["doc-renovation", "doc-cof"],
+  "Unit Documents Gathered & Shared": ["doc-provision", "doc-renovation"],
+  "Reinstatement::Reinstatement Requirements & Plan Alignment": ["doc-renovation"],
+  "Reinstatement Permit Submission via OneCalendar": [
+    "doc-renovation",
+    "doc-method",
+    "doc-hoarding",
+  ],
   "Pre-Reinstatement Works": ["doc-hoarding"],
   "Pre-Takeover Inspection": ["doc-takeover", "doc-poi"],
   "Takeover Meeting": ["doc-takeover"],
@@ -313,12 +449,36 @@ export function docsForStep(
   tenancyType: string,
   terminal: string,
   zone: string = "Airside",
+  stageName?: string,
 ): DocItem[] {
-  const ids = STEP_DOC_IDS[stepName];
+  const ids =
+    (stageName && STEP_DOC_IDS[`${stageName}::${stepName}`]) ||
+    STEP_DOC_IDS[stepName];
   if (!ids?.length) return [];
   return ids
     .map((id) => DOCUMENTS.find((d) => d.id === id))
     .filter((d): d is DocItem => Boolean(d))
+    .filter((d) => !NOT_IN_PORTAL.has(d.id))
+    .filter(
+      (d) =>
+        d.zone.includes(zone as DocItem["zone"][number]) &&
+        d.terminal.includes(terminal as DocItem["terminal"][number]) &&
+        d.tenancyType.includes(tenancyType as DocItem["tenancyType"][number]),
+    );
+}
+
+/** Portal files by id, filtered to the active unit. */
+export function docsByIds(
+  ids: string[],
+  tenancyType: string,
+  terminal: string,
+  zone: string = "Airside",
+): DocItem[] {
+  if (!ids.length) return [];
+  return ids
+    .map((id) => DOCUMENTS.find((d) => d.id === id))
+    .filter((d): d is DocItem => Boolean(d))
+    .filter((d) => !NOT_IN_PORTAL.has(d.id))
     .filter(
       (d) =>
         d.zone.includes(zone as DocItem["zone"][number]) &&

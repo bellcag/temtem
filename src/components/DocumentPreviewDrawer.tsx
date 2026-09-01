@@ -22,6 +22,10 @@ export function DocumentPreviewDrawer({
   useEffect(() => {
     if (!docId) return;
     trackDoc(docId);
+  }, [docId, trackDoc]);
+
+  useEffect(() => {
+    if (!docId) return;
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") onClose();
     };
@@ -32,7 +36,7 @@ export function DocumentPreviewDrawer({
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [docId, onClose, trackDoc]);
+  }, [docId, onClose]);
 
   if (!docId) return null;
 
