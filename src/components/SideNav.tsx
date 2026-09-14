@@ -1,6 +1,16 @@
-import { NavLink, useLocation } from "react-router-dom";
-import { useState } from "react";
+import { NavLink, useLocation, useNavigate } from "react-router-dom";
+import { useEffect, useState } from "react";
 import { useApp, type Role } from "@/lib/app-state";
+import { DEMO_EMAILS } from "@/lib/auth-accounts";
+import { jobById, readSavedJobId } from "@/lib/process-job-context";
+import {
+  applyWorksDemoStory,
+  readWorksDemoStory,
+  WORKS_CHANGED_EVENT,
+  WORKS_DEMO_STORIES,
+  WORKS_HREF,
+  type WorksDemoStory,
+} from "@/lib/process-works-jobs";
 import { TENANT, OFFICER, CONTRACTOR } from "@/lib/tenancy-data";
 import { cn } from "@/lib/utils";
 
@@ -25,7 +35,7 @@ type NavItem = {
 const NAV_PRIMARY: NavItem[] = [
   { to: "/home", label: "Home", icon: "home" },
   {
-    to: "/process-v19",
+    to: "/process",
     label: "Process",
     icon: "process",
     match: (path) => path === "/process" || path.startsWith("/process-"),
@@ -70,9 +80,9 @@ const ROLES: { id: Role; label: string }[] = [
 ];
 
 const PROFILE: Record<Role, { initials: string; email: string }> = {
-  tenant: { initials: "ST", email: "sarah.tan@kopico.sg" },
-  contractor: { initials: "RK", email: "raj.kumar@buildright.sg" },
-  officer: { initials: "DW", email: "daniel.wong@changiairport.com" },
+  tenant: { initials: "ST", email: DEMO_EMAILS.tenant },
+  contractor: { initials: "RK", email: DEMO_EMAILS.contractor },
+  officer: { initials: "DW", email: DEMO_EMAILS.officer },
 };
 
 function Glyph({
@@ -108,6 +118,7 @@ function MenuRow({
   active,
   collapsed,
   onClick,
+  disabled,
 }: {
   to?: string;
   label: string;
@@ -115,11 +126,13 @@ function MenuRow({
   active?: boolean;
   collapsed?: boolean;
   onClick?: () => void;
+  disabled?: boolean;
 }) {
   const className = cn(
     "flex w-full items-center rounded-[var(--radius-sm)] px-3 py-1 text-left",
     active && "bg-purple-100",
     collapsed && "tablet:justify-center tablet:px-0",
+    disabled && "cursor-not-allowed opacity-40",
   );
   const inner = (
     <span className="flex h-9 flex-1 items-center gap-3">
@@ -145,7 +158,13 @@ function MenuRow({
   }
 
   return (
-    <button type="button" title={label} onClick={onClick} className={className}>
+    <button
+      type="button"
+      title={disabled ? "Not in this drop" : label}
+      disabled={disabled}
+      onClick={onClick}
+      className={className}
+    >
       {inner}
     </button>
   );
@@ -160,9 +179,36 @@ export function SideNav({
   collapsed?: boolean;
   onToggleCollapse?: () => void;
 }) {
-  const { role, setRole } = useApp();
+  const { role, setRole, signOut, unit, effectiveUnit } = useApp();
   const location = useLocation();
+  const navigate = useNavigate();
   const [roleOpen, setRoleOpen] = useState(false);
+  const [demoStory, setDemoStory] = useState<WorksDemoStory | null>(null);
+
+  useEffect(() => {
+    const refresh = () => setDemoStory(readWorksDemoStory());
+    refresh();
+    window.addEventListener(WORKS_CHANGED_EVENT, refresh);
+    window.addEventListener("storage", refresh);
+    return () => {
+      window.removeEventListener(WORKS_CHANGED_EVENT, refresh);
+      window.removeEventListener("storage", refresh);
+    };
+  }, []);
+
+  const demoUnitId = () => {
+    if (role === "officer") return (effectiveUnit ?? unit).id;
+    if (role === "contractor") return jobById(readSavedJobId()).unit.id;
+    return unit.id;
+  };
+
+  const applyDemoStory = (story: WorksDemoStory) => {
+    applyWorksDemoStory(demoUnitId(), story);
+    setDemoStory(story);
+    setRoleOpen(false);
+    onNavigate?.();
+    navigate(WORKS_HREF);
+  };
 
   const userLabel =
     role === "officer"
@@ -190,7 +236,7 @@ export function SideNav({
             src={logo}
             alt="CHANGI airport group"
             className={cn(
-              "block h-[35px] w-[130px]",
+              "block h-[35px] w-[130px] object-contain",
               collapsed && "tablet:hidden",
             )}
           />
@@ -242,11 +288,18 @@ export function SideNav({
         )}
       >
         <div className={cn("flex flex-col gap-1", collapsed && "tablet:hidden")}>
-          <MenuRow label="Settings" icon="settings" />
+          <MenuRow
+            label="Settings"
+            icon="settings"
+            disabled
+          />
           <MenuRow
             label="Log Out"
             icon="logout"
-            onClick={() => setRole("tenant")}
+            onClick={() => {
+              signOut();
+              navigate("/login");
+            }}
           />
         </div>
         <div className="h-px w-full bg-grey-100" />
@@ -277,9 +330,12 @@ export function SideNav({
           {roleOpen && (
             <ul
               role="listbox"
-              aria-label="Demo: sign in as"
+              aria-label="Prototype demo"
               className="absolute inset-x-0 bottom-full z-40 mb-1 overflow-hidden rounded-[var(--radius-sm)] border border-grey-200 bg-white py-1 shadow-[var(--shadow-light-bg)]"
             >
+              <li className="px-3 pb-1 pt-2 text-xs leading-4 font-bold uppercase tracking-[0.08em] text-grey-400">
+                Sign in as
+              </li>
               {ROLES.map((r) => (
                 <li key={r.id}>
                   <button
@@ -298,6 +354,28 @@ export function SideNav({
                     )}
                   >
                     {r.label}
+                  </button>
+                </li>
+              ))}
+              <li className="mx-3 my-1 h-px bg-grey-100" aria-hidden />
+              <li className="px-3 pb-1 pt-1 text-xs leading-4 font-bold uppercase tracking-[0.08em] text-grey-400">
+                Reset Works
+              </li>
+              {WORKS_DEMO_STORIES.map((story) => (
+                <li key={story.id}>
+                  <button
+                    type="button"
+                    role="option"
+                    aria-selected={demoStory === story.id}
+                    onClick={() => applyDemoStory(story.id)}
+                    className={cn(
+                      "w-full px-3 py-2 text-left text-sm leading-[18px]",
+                      demoStory === story.id
+                        ? "bg-purple-100 font-bold text-purple-700"
+                        : "text-grey-900 hover:bg-grey-50",
+                    )}
+                  >
+                    {story.label}
                   </button>
                 </li>
               ))}

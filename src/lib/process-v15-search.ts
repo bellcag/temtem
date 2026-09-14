@@ -24,23 +24,44 @@ export type SearchHit = {
   systemLabel?: string;
 };
 
-/** Usual PO jumps — only shown if the string already appears on a card. */
+/**
+ * At-rest overlay chips. One pass through the tenancy, not only SetUp.
+ * Every label must already appear on a card (or expand via SEARCH_ALIASES).
+ */
 export const SEARCH_CHIP_CANDIDATES = [
-  "Permit submission",
-  "JSI",
   "OneCal",
+  "JSI",
+  "KickOff",
+  "Permit to Work",
+  "TOPAZ",
+  "Reinstatement",
+  "Handover",
+  "Hoarding",
+  "IFM briefing",
+  "Fire certificate",
 ] as const;
 
-/** Landing quick links — only names that already exist on cards. */
+/** Typed overlay pool — pack names people type after the first five. */
 export const QUICK_LINK_CANDIDATES = [
   "OneCalendar",
   "Permit to Work",
   "Joint Site Inspection",
   "Renovation Requirements",
   "Handover",
-  "Planned works",
   "Design approval",
   "Loading bay",
+  "KickOff",
+  "Hoarding",
+  "IFM briefing",
+  "Hot work",
+  "QSM",
+  "WebEpic",
+  "TOPAZ",
+  "Reinstatement",
+  "Tenant–Contractor Kit",
+  "Temporary power",
+  "Fire certificate",
+  "Directory",
 ] as const;
 
 /**
@@ -51,11 +72,27 @@ const SEARCH_ALIASES: Record<string, string[]> = {
   qsm: ["Quality Service Management"],
   jsi: ["Joint Site Inspection", "JSI"],
   onecal: ["OneCalendar", "OneCal"],
-  hotwork: ["Hot Work", "Joint Site Inspection"],
+  hotwork: ["Hot Work", "Hotwork", "Joint Site Inspection"],
+  "hot work": ["Hot Work", "Hotwork", "hot-work"],
   ptw: ["Permit to Work"],
   "first site meeting": ["KickOff meeting"],
   "after first site meeting": ["KickOff follow-up pack"],
+  "after ifm briefing": ["KickOff follow-up pack"],
   "loading bay": ["loading-bay", "Loading-bay"],
+  kickoff: ["KickOff meeting", "KickOff"],
+  kit: ["Tenant–Contractor Kit", "Tenant-Contractor Kit"],
+  briefing: [
+    "IFM pre-renovation briefing",
+    "Integrated Facilities Management Pre-Renovation Briefing",
+  ],
+  "ifm briefing": [
+    "IFM pre-renovation briefing",
+    "pre-renovation briefing",
+  ],
+  keys: ["handover", "Handover"],
+  fsc: ["Fire Safety Certificate"],
+  "fire certificate": ["Fire Safety Certificate"],
+  rr: ["Renovation Requirements"],
 };
 
 export function normalizeQuery(value: string): string {
@@ -92,6 +129,49 @@ export function chipsForCards(cards: CardSearchSurface[]): string[] {
   return SEARCH_CHIP_CANDIDATES.filter((chip) =>
     cards.some((card) => cardCorpus(card).some((text) => textMatches(text, chip))),
   );
+}
+
+/** Keyword chips for the find overlay — only labels that already exist in the catalogue. */
+export function keywordPoolForBlobs(blobs: string[]): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const label of [...SEARCH_CHIP_CANDIDATES, ...QUICK_LINK_CANDIDATES]) {
+    const key = normalizeQuery(label);
+    if (!key || seen.has(key)) continue;
+    if (!blobs.some((blob) => textMatches(blob, label))) continue;
+    seen.add(key);
+    out.push(label);
+  }
+  return out;
+}
+
+/** Suggested keywords: popular at rest, then labels that match the typed query. */
+export function suggestKeywords(
+  query: string,
+  catalogue: readonly string[],
+): string[] {
+  const n = normalizeQuery(query);
+  const needles = n ? matchNeedles(query).map(normalizeQuery) : [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of catalogue) {
+    const label = raw.trim();
+    const key = normalizeQuery(label);
+    if (!label || seen.has(key)) continue;
+    if (n) {
+      const hay = normalizeQuery(label);
+      const hit =
+        hay.includes(n) ||
+        n.includes(key) ||
+        textMatches(label, query) ||
+        needles.some((needle) => hay.includes(needle));
+      if (!hit) continue;
+    }
+    seen.add(key);
+    out.push(label);
+    if (out.length >= (n ? 8 : 6)) break;
+  }
+  return out;
 }
 
 export function hitsForQuery(

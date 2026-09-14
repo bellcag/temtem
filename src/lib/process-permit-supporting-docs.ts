@@ -472,6 +472,12 @@ export function needLabel(need: DocNeed): string {
   return NEED_LABEL[need];
 }
 
+/** Required vs optional for submission prep. IFM nuance stays in `ifmNote`. */
+export function needLabelCompact(need: DocNeed): string {
+  if (need === "optional" || need === "rr-if-applies") return "Optional";
+  return "Required";
+}
+
 export function supplierLine(supplier: DocSupplier, role: Role): string {
   return SUPPLIER_COPY[supplier][role];
 }

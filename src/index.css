@@ -24,8 +24,9 @@
   --color-grey-800: #2f2f2f;
   --color-grey-900: #222222;
 
-  /* Colors/Blue — Status Chip (Neutral) */
+  /* Colors/Blue — Status Chip (Neutral) / info */
   --color-blue-100: #f3f7fb;
+  --color-blue-200: #d9e6f4;
   --color-blue-600: #0057b8;
   --color-blue-700: #0049a8;
 
@@ -44,6 +45,7 @@
   --color-error-600: #cc1000;
   --color-error-100: #fff6f5;
   --color-warning-800: #c65d00;
+  --color-warning-700: #e06a27;
   --color-warning-600: #f2721b;
   --color-warning-200: #fce1b6;
   --color-warning-100: #fef5e7;
@@ -73,6 +75,13 @@
 
   --font-sans: "Lato", sans-serif;
   --shadow-light-bg: 0px 6px 20px rgba(18, 18, 18, 0.08);
+  /* Figma _Atoms/Process/Sticky Idle — Changi App Light fill + Bright purple border */
+  --gradient-quiz-sticky: linear-gradient(90deg, #fcfcfc 0%, #f3f0f7 100%);
+  --gradient-quiz-sticky-border: linear-gradient(
+    118deg,
+    #7e1bcc 0%,
+    #e74391 100%
+  );
   /* Runway DLS — Changi App (Light): #f3f0f7 → #fcfcfc */
   --gradient-light: linear-gradient(180deg, #f3f0f7 0%, #fcfcfc 100%);
   /* Runway DLS — Changi App (Light purple): #c986ff → #ddc2ff */
@@ -123,6 +132,14 @@
     align-self: stretch;
   }
 
+  /* Mobile drawer must stay out of the flex row or html-to-design
+     captures a 288px sidebar and an 87px-wide page. */
+  @media (max-width: 767px) {
+    html.figma-full #tempo-sidenav {
+      display: none !important;
+    }
+  }
+
   body {
     margin: 0;
     font-family: var(--font-sans);
@@ -142,18 +159,17 @@
     }
   }
 
-  /* Page shell: iPhone margin 16 · default/desktop margin 24 · content ≤1280 */
+  /* Horizontal page margin is the AppShell side rails, not padding on the scroller. */
   .dls-page {
     width: 100%;
     max-width: var(--container-desktop);
     margin-inline: auto;
-    padding-inline: var(--spacing-16);
+    padding-inline: 0;
     padding-block: var(--spacing-24);
   }
 
   @media (min-width: 768px) {
     .dls-page {
-      padding-inline: var(--spacing-24);
       padding-block: var(--spacing-32);
     }
   }
@@ -260,4 +276,12 @@
   background-color: var(--color-purple-100);
   color: var(--color-purple-700);
   box-shadow: 0 0 0 2px #7a35b0;
+}
+
+/* Figma _Atoms/Process/Sticky Idle — light fill + 2px gradient stroke */
+.quiz-sticky-idle {
+  border: 2px solid transparent;
+  background:
+    var(--gradient-quiz-sticky) padding-box,
+    var(--gradient-quiz-sticky-border) border-box;
 }

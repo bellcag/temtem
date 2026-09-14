@@ -510,7 +510,7 @@ export const STEP_RULES: Record<string, GuideRule[]> = {
     }),
   ],
 
-  "Post-Kickoff::Onboarding Guidelines Shared": [
+  "Renovation::Onboarding Guidelines Shared": [
     r("RR 3.1(iii)", "must", {
       tenant:
         "Apply for the Works Permit about two weeks before works start. Keep the approved permit (and isolation / hot-work / STC permits) printed behind the hoarding door or on site.",
@@ -1116,9 +1116,13 @@ const CATALOGUE_TIMING: Record<
     sources: ["Renovation::Pre-Opening Checks and Certifications"],
     cites: ["RR 3.5.4"],
   },
+  "Renovation::Temporary Power Request": {
+    sources: ["Renovation::Pre-Opening Checks and Certifications"],
+    cites: ["RR 6.10.3", "RR 5.1"],
+  },
   "Renovation::Pre-Opening Inspection": {
     sources: ["Renovation::Pre-Opening Checks and Certifications"],
-    cites: ["RR 5.9.8(i)", "RR 6.10.3", "RR 5.1"],
+    cites: ["RR 5.9.8(i)"],
   },
   "Reinstatement::Reinstatement Permit Submission via OneCalendar": {
     sources: ["Reinstatement::Permit Submission via OneCal 3.0"],

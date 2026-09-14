@@ -12,17 +12,11 @@ export function AppShell() {
   const [navCollapsed, setNavCollapsed] = useState(false);
   const location = useLocation();
   const figmaFull = useFigmaFullCapture();
-  const isProcessGuide = location.pathname.startsWith("/process");
 
   // Close mobile drawer on route change
   useEffect(() => {
     setNavOpen(false);
   }, [location.pathname]);
-
-  // Process side-by-side layout needs the app nav as an icon rail
-  useEffect(() => {
-    setNavCollapsed(isProcessGuide);
-  }, [isProcessGuide]);
 
   // Lock body scroll while drawer is open (iPhone)
   useEffect(() => {
@@ -56,7 +50,7 @@ export function AppShell() {
         <img
           src={logoMobile}
           alt="CHANGI airport group"
-          className="block h-7 w-auto"
+          className="block h-7 w-auto object-contain"
         />
       </header>
 
@@ -84,14 +78,23 @@ export function AppShell() {
         />
       </div>
 
+      <div
+        className="w-4 shrink-0 bg-grey-50 tablet:w-8 desktop:w-10"
+        aria-hidden
+      />
       <main
         className={cn(
-          "min-w-0 flex-1 pt-14 tablet:pt-0",
-          figmaFull ? "overflow-visible" : "overflow-y-auto",
+          "min-w-0 flex-1",
+          figmaFull ? "overflow-visible" : "overflow-y-auto overflow-x-hidden",
         )}
       >
+        <div className="h-14 shrink-0 tablet:hidden" aria-hidden />
         <Outlet />
       </main>
+      <div
+        className="w-4 shrink-0 bg-grey-50 tablet:w-8 desktop:w-10"
+        aria-hidden
+      />
       {!figmaFull && (
         <div className="hidden h-full desktop:contents">
           <AssistantPanel />

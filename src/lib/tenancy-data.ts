@@ -40,6 +40,7 @@ export const TENANT = {
   firstName: "Sarah",
   fullName: "Sarah Tan",
   company: "Kopi & Co. Pte Ltd",
+  email: "sarah.tan@kopico.sg",
 };
 
 export const CONTRACTOR = {
@@ -47,6 +48,7 @@ export const CONTRACTOR = {
   fullName: "Raj Kumar",
   company: "BuildRight Contractors Pte Ltd",
   role: "Site Supervisor",
+  email: "raj.kumar@buildright.sg",
 };
 
 export const OFFICER = {
@@ -55,6 +57,7 @@ export const OFFICER = {
   role: "Project Officer — T3",
   team: "COM T3",
   terminal: "T3" as const,
+  email: "daniel.wong@changiairport.com",
 };
 
 /** MVP: Airside F&B + Retail only */
@@ -459,80 +462,8 @@ export const PHASES: Phase[] = [
       },
       {
         name: "Post-Kickoff",
-        purpose: "Receive your checklists and access setup after kickoff.",
+        purpose: "Confirm the fire permit route after KickOff.",
         steps: [
-          {
-            name: "Onboarding Guidelines Shared",
-            responsible: "CAG",
-            what: "Send the post-kickoff pack — checklists, access setup and commercial onboarding links for this unit.",
-            whatFor: {
-              tenant: "You’ll receive one post-kickoff email with checklists and access notes. Your Project Officer also sets up staff access and asks for directory details.",
-              contractor: "You’ll get loading-bay access notes after kickoff. The tenant receives the rest of the pack.",
-              officer: "Send one post-kickoff email (checklists, kits, and unit notes), then set up access and commercial onboarding for this unit.",
-            },
-            subSteps: [
-              {
-                text: "You’ll receive one post-kickoff email with checklists, renovation and JSI notes, loading-bay info, and the Tenant–Contractor Kit. Staff access is set up for you; reply when your Project Officer asks for store directory details.",
-                audience: "tenant",
-                seq: "parallel",
-              },
-              {
-                text: "You’ll get loading-bay access notes in the post-kickoff pack. Create an Access Control & Scheduling System account for loading-bay access when you’re reminded.",
-                audience: "contractor",
-                seq: "parallel",
-              },
-              {
-                text: "Collate and send one post-kickoff email: kickoff notes, submission checklist, renovation and JSI requirements, LONO/FSC where they apply, basement loading-bay info, and the Tenant–Contractor Kit. Add the T3 structured ceiling permit note when it applies.",
-                audience: "officer",
-                seq: "parallel",
-              },
-              {
-                text: "Set up the Access Control & Scheduling System account for tenant staff access.",
-                audience: "officer",
-                seq: "parallel",
-                alsoText: {
-                  tenant: "Access Control & Scheduling System is being set up for tenant staff access.",
-                  contractor: "Access Control & Scheduling System is being set up for tenant staff access.",
-                },
-              },
-              {
-                text: "Remind the contractor to create an Access Control & Scheduling System account for loading-bay access.",
-                audience: "officer",
-                seq: "sequential",
-                alsoText: {
-                  tenant: "A loading-bay Access Control & Scheduling System account is being arranged.",
-                  contractor: "A reminder is going out to create an Access Control & Scheduling System account for loading-bay access.",
-                },
-              },
-              {
-                text: "Email Viseo to create the tenant’s Salesforce account.",
-                tag: "Landside Concessions Only",
-                audience: "officer",
-                seq: "parallel",
-              },
-              {
-                text: "Email Changi Rewards to start the tenant portal account setup.",
-                audience: "officer",
-                seq: "parallel",
-              },
-              {
-                text: "Request Tenant Directory Taxonomy details from the tenant.",
-                audience: "officer",
-                seq: "parallel",
-                alsoText: {
-                  tenant: "Your Project Officer may ask you for store directory details.",
-                  contractor: "Store directory details are being requested from the tenant.",
-                },
-              },
-              {
-                text: "Start iShopChangi onboarding for the tenant.",
-                audience: "officer",
-                seq: "parallel",
-              },
-            ],
-            people: ["Project Officer", "Qualified Person"],
-            systems: [{ label: "Access Control & Scheduling System" }, { label: "Salesforce" }, { label: "Changi Rewards" }, { label: "Tenant Directory Taxonomy" }, { label: "iShopChangi" }],
-          },
           {
             name: "Confirm Fire Safety Submission Route",
             responsible: "CAG + You",
@@ -655,15 +586,16 @@ export const PHASES: Phase[] = [
           {
             name: "Renovation (Terminal) Permit",
             responsible: "You",
-            what: "Fill the Renovation (Terminal) permit in OneCalendar.",
+            what: "Upload documents in Application Screener first, then submit in OneCalendar.",
             whatFor: {
               tenant: "Get this renovation permit in OneCalendar.",
-              contractor: "Fill the Renovation (Terminal) permit in OneCalendar.",
+              contractor:
+                "Upload documents in Application Screener first, then submit in OneCalendar.",
               officer: "Check this renovation permit in OneCalendar.",
             },
             subSteps: [
               {
-                text: "Fill the Renovation (Terminal) permit in OneCalendar (work period and supporting documents).",
+                text: "Upload documents in Application Screener first, then submit in OneCalendar.",
                 audience: "contractor",
               },
             ],
@@ -673,16 +605,17 @@ export const PHASES: Phase[] = [
           {
             name: "Ceiling Permit",
             responsible: "You",
-            what: "Fill the Ceiling permit in OneCalendar.",
+            what: "Upload documents in Application Screener first, then submit in OneCalendar.",
             whenSlugs: ["above-ceiling-works"],
             whatFor: {
               tenant: "Get this renovation permit in OneCalendar.",
-              contractor: "Fill the Ceiling permit in OneCalendar.",
+              contractor:
+                "Upload documents in Application Screener first, then submit in OneCalendar.",
               officer: "Check this renovation permit in OneCalendar.",
             },
             subSteps: [
               {
-                text: "Fill the Ceiling permit in OneCalendar (work period and supporting documents).",
+                text: "Upload documents in Application Screener first, then submit in OneCalendar.",
                 audience: "contractor",
               },
             ],
@@ -725,16 +658,17 @@ export const PHASES: Phase[] = [
           {
             name: "Fire Alarm Isolation / Sprinkler Draining Permit",
             responsible: "You",
-            what: "Fill the Fire Alarm Isolation permit in OneCalendar.",
+            what: "Upload documents in Application Screener first, then submit in OneCalendar.",
             whenSlugs: ["fire-alarm-isolation"],
             whatFor: {
               tenant: "Get this renovation permit in OneCalendar.",
-              contractor: "Fill the Fire Alarm Isolation permit in OneCalendar.",
+              contractor:
+                "Upload documents in Application Screener first, then submit in OneCalendar.",
               officer: "Check this renovation permit in OneCalendar.",
             },
             subSteps: [
               {
-                text: "Fill the Fire Alarm Isolation permit in OneCalendar (basic permit information and the Joint Site Inspection form when isolation applies).",
+                text: "Upload documents in Application Screener first, then submit in OneCalendar.",
                 audience: "contractor",
               },
             ],
@@ -744,16 +678,17 @@ export const PHASES: Phase[] = [
           {
             name: "Hotwork Permit",
             responsible: "You",
-            what: "Fill the Hot Work permit in OneCalendar.",
+            what: "Upload documents in Application Screener first, then submit in OneCalendar.",
             whenSlugs: ["hot-work"],
             whatFor: {
               tenant: "Get this renovation permit in OneCalendar.",
-              contractor: "Fill the Hot Work permit in OneCalendar.",
+              contractor:
+                "Upload documents in Application Screener first, then submit in OneCalendar.",
               officer: "Check this renovation permit in OneCalendar.",
             },
             subSteps: [
               {
-                text: "Fill the Hot Work permit in OneCalendar (work period and Hot Work checklist).",
+                text: "Upload documents in Application Screener first, then submit in OneCalendar.",
                 audience: "contractor",
               },
             ],
@@ -763,16 +698,17 @@ export const PHASES: Phase[] = [
           {
             name: "Architectural Changes & Authority Approvals",
             responsible: "You",
-            what: "Fill the Archi Changes / Authority Submission & Approvals permit in OneCalendar.",
+            what: "Upload documents in Application Screener first, then submit in OneCalendar.",
             whenSlugs: ["authority-approval"],
             whatFor: {
               tenant: "Get this renovation permit in OneCalendar.",
-              contractor: "Fill the Archi Changes permit in OneCalendar.",
+              contractor:
+                "Upload documents in Application Screener first, then submit in OneCalendar.",
               officer: "Check this renovation permit in OneCalendar.",
             },
             subSteps: [
               {
-                text: "Fill the Archi Changes / Authority Submission & Approvals permit in OneCalendar (location and supporting documents).",
+                text: "Upload documents in Application Screener first, then submit in OneCalendar.",
                 audience: "contractor",
               },
             ],
@@ -782,16 +718,17 @@ export const PHASES: Phase[] = [
           {
             name: "MEP Changes Permit",
             responsible: "You",
-            what: "Fill the MEP Changes permit in OneCalendar.",
+            what: "Upload documents in Application Screener first, then submit in OneCalendar.",
             whenSlugs: ["mep-changes"],
             whatFor: {
               tenant: "Get this renovation permit in OneCalendar.",
-              contractor: "Fill the MEP Changes permit in OneCalendar.",
+              contractor:
+                "Upload documents in Application Screener first, then submit in OneCalendar.",
               officer: "Check this renovation permit in OneCalendar.",
             },
             subSteps: [
               {
-                text: "Fill the MEP Changes permit in OneCalendar (location and supporting documents).",
+                text: "Upload documents in Application Screener first, then submit in OneCalendar.",
                 audience: "contractor",
               },
             ],
@@ -816,16 +753,17 @@ export const PHASES: Phase[] = [
           {
             name: "Structured Cabling (T3 Tenant Telephone Lines) Permit",
             responsible: "You",
-            what: "Fill the Structured Cabling (T3 tenant telephone lines) permit in OneCalendar.",
+            what: "Upload documents in Application Screener first, then submit in OneCalendar.",
             whenSlugs: ["structured-cabling"],
             whatFor: {
               tenant: "Get this renovation permit in OneCalendar.",
-              contractor: "Fill the T3 cabling permit in OneCalendar.",
+              contractor:
+                "Upload documents in Application Screener first, then submit in OneCalendar.",
               officer: "Check this renovation permit in OneCalendar.",
             },
             subSteps: [
               {
-                text: "Fill the Structured Cabling (T3 tenant telephone lines) permit in OneCalendar (location and supporting documents).",
+                text: "Upload documents in Application Screener first, then submit in OneCalendar.",
                 tag: "Terminal 3 (",
                 audience: "contractor",
               },
@@ -836,16 +774,17 @@ export const PHASES: Phase[] = [
           {
             name: "Structured Cabling Indoor/Outdoor Permit",
             responsible: "You",
-            what: "Fill the Structured Cabling Indoor/Outdoor permit in OneCalendar.",
+            what: "Upload documents in Application Screener first, then submit in OneCalendar.",
             whenSlugs: ["structured-cabling"],
             whatFor: {
               tenant: "Get this renovation permit in OneCalendar.",
-              contractor: "Fill the indoor outdoor cabling permit in OneCalendar.",
+              contractor:
+                "Upload documents in Application Screener first, then submit in OneCalendar.",
               officer: "Check this renovation permit in OneCalendar.",
             },
             subSteps: [
               {
-                text: "Fill the Structured Cabling Indoor/Outdoor permit in OneCalendar (location and supporting documents).",
+                text: "Upload documents in Application Screener first, then submit in OneCalendar.",
                 audience: "contractor",
               },
             ],
@@ -855,16 +794,17 @@ export const PHASES: Phase[] = [
           {
             name: "Telco Cabling Permit",
             responsible: "You",
-            what: "Fill the Telco Cabling permit in OneCalendar.",
+            what: "Upload documents in Application Screener first, then submit in OneCalendar.",
             whenSlugs: ["telco-cabling"],
             whatFor: {
               tenant: "Get this renovation permit in OneCalendar.",
-              contractor: "Fill the Telco Cabling permit in OneCalendar.",
+              contractor:
+                "Upload documents in Application Screener first, then submit in OneCalendar.",
               officer: "Check this renovation permit in OneCalendar.",
             },
             subSteps: [
               {
-                text: "Fill the Telco Cabling permit in OneCalendar (work period and supporting documents).",
+                text: "Upload documents in Application Screener first, then submit in OneCalendar.",
                 audience: "contractor",
               },
             ],
@@ -874,16 +814,17 @@ export const PHASES: Phase[] = [
           {
             name: "Catwalk Access Permit (Terminal 4)",
             responsible: "You",
-            what: "Fill the Catwalk Access permit in OneCalendar.",
+            what: "Upload documents in Application Screener first, then submit in OneCalendar.",
             whenSlugs: ["catwalk-access"],
             whatFor: {
               tenant: "Get this renovation permit in OneCalendar.",
-              contractor: "Fill the Catwalk Access permit in OneCalendar.",
+              contractor:
+                "Upload documents in Application Screener first, then submit in OneCalendar.",
               officer: "Check this renovation permit in OneCalendar.",
             },
             subSteps: [
               {
-                text: "Fill the Catwalk Access permit in OneCalendar (worker name list and supporting documents).",
+                text: "Upload documents in Application Screener first, then submit in OneCalendar.",
                 tag: "Terminal 4 only",
                 audience: "contractor",
               },
@@ -894,16 +835,17 @@ export const PHASES: Phase[] = [
           {
             name: "Renovation (Terminal – Additional) Permit",
             responsible: "You",
-            what: "Fill the Renovation (Terminal — Additional) permit in OneCalendar.",
+            what: "Upload documents in Application Screener first, then submit in OneCalendar.",
             whenSlugs: ["additional-renovation-scope"],
             whatFor: {
               tenant: "Get this renovation permit in OneCalendar.",
-              contractor: "Fill the additional renovation permit in OneCalendar.",
+              contractor:
+                "Upload documents in Application Screener first, then submit in OneCalendar.",
               officer: "Check this renovation permit in OneCalendar.",
             },
             subSteps: [
               {
-                text: "Fill the Renovation (Terminal — Additional) permit in OneCalendar (work period and supporting documents).",
+                text: "Upload documents in Application Screener first, then submit in OneCalendar.",
                 audience: "contractor",
               },
             ],
@@ -1045,7 +987,7 @@ export const PHASES: Phase[] = [
           {
             name: "Requests / Permissions Outside OneCalendar",
             responsible: "You",
-            what: "Email IFM for permissions they named at the first site meeting.",
+            what: "Email IFM for permissions they named at the pre-renovation briefing.",
             whatFor: {
               tenant: "Email IFM for permissions they named.",
               contractor: "Email IFM for permissions they named.",
@@ -1115,6 +1057,78 @@ export const PHASES: Phase[] = [
             ],
             people: ["Integrated Facilities Management"],
             systems: [{ label: "Outlook Meeting Scheduler" }],
+          },
+          {
+            name: "Onboarding Guidelines Shared",
+            responsible: "CAG",
+            what: "Send the follow-up pack — checklists, access setup and commercial onboarding links for this unit — when planned works are certain.",
+            whatFor: {
+              tenant: "You’ll receive one email with checklists and access notes when planned works are certain. Your Project Officer also sets up staff access and asks for directory details.",
+              contractor: "You’ll get loading-bay access notes when planned works are certain. The tenant receives the rest of the pack.",
+              officer: "Send one follow-up email (checklists, kits, and unit notes) after the IFM briefing, then set up access and commercial onboarding for this unit.",
+            },
+            subSteps: [
+              {
+                text: "You’ll receive one email with checklists, renovation and JSI notes, loading-bay info, and the Tenant–Contractor Kit. Staff access is set up for you; reply when your Project Officer asks for store directory details.",
+                audience: "tenant",
+                seq: "parallel",
+              },
+              {
+                text: "You’ll get loading-bay access notes in the follow-up pack. Create an Access Control & Scheduling System account for loading-bay access when you’re reminded.",
+                audience: "contractor",
+                seq: "parallel",
+              },
+              {
+                text: "Collate and send one follow-up email: kickoff notes, submission checklist, renovation and JSI requirements, LONO/FSC where they apply, basement loading-bay info, and the Tenant–Contractor Kit. Add the T3 structured ceiling permit note when it applies.",
+                audience: "officer",
+                seq: "parallel",
+              },
+              {
+                text: "Set up the Access Control & Scheduling System account for tenant staff access.",
+                audience: "officer",
+                seq: "parallel",
+                alsoText: {
+                  tenant: "Access Control & Scheduling System is being set up for tenant staff access.",
+                  contractor: "Access Control & Scheduling System is being set up for tenant staff access.",
+                },
+              },
+              {
+                text: "Remind the contractor to create an Access Control & Scheduling System account for loading-bay access.",
+                audience: "officer",
+                seq: "sequential",
+                alsoText: {
+                  tenant: "A loading-bay Access Control & Scheduling System account is being arranged.",
+                  contractor: "A reminder is going out to create an Access Control & Scheduling System account for loading-bay access.",
+                },
+              },
+              {
+                text: "Email Viseo to create the tenant’s Salesforce account.",
+                tag: "Landside Concessions Only",
+                audience: "officer",
+                seq: "parallel",
+              },
+              {
+                text: "Email Changi Rewards to start the tenant portal account setup.",
+                audience: "officer",
+                seq: "parallel",
+              },
+              {
+                text: "Request Tenant Directory Taxonomy details from the tenant.",
+                audience: "officer",
+                seq: "parallel",
+                alsoText: {
+                  tenant: "Your Project Officer may ask you for store directory details.",
+                  contractor: "Store directory details are being requested from the tenant.",
+                },
+              },
+              {
+                text: "Start iShopChangi onboarding for the tenant.",
+                audience: "officer",
+                seq: "parallel",
+              },
+            ],
+            people: ["Project Officer", "Qualified Person"],
+            systems: [{ label: "Access Control & Scheduling System" }, { label: "Salesforce" }, { label: "Changi Rewards" }, { label: "Tenant Directory Taxonomy" }, { label: "iShopChangi" }],
           },
           {
             name: "Airport Passes & Hoarding Installation",
@@ -1571,7 +1585,7 @@ export const PHASES: Phase[] = [
             subSteps: [
               { text: "Submit your pest control report to IFM via TOPAZ.", tag: "F&B", audience: "tenant" },
             ],
-            people: ["Tenant"],
+            people: ["Tenant", "Integrated Facilities Management"],
             systems: [{ label: "TOPAZ" }],
           },
           {
@@ -1587,7 +1601,7 @@ export const PHASES: Phase[] = [
             subSteps: [
               { text: "Submit your Air Handling Unit servicing report to IFM via TOPAZ.", audience: "tenant" },
             ],
-            people: ["Tenant"],
+            people: ["Tenant", "Integrated Facilities Management"],
             systems: [{ label: "TOPAZ" }],
           },
           {

@@ -24,48 +24,43 @@ const AES_ISSUES = {
 const EXPLAIN: Record<string, PermitExplain> = {
   renovation: {
     what: "The main renovation permit for the unit.",
-    why: (unit) => `Every fit-out at ${unit.terminal} needs this.`,
+    why: () => "",
     who: APPLY,
     sampleDocIds: ["doc-method", "doc-hoarding"],
   },
   extra: {
     what: "Works beyond what was already approved.",
-    why: (unit) => `Needed at ${unit.terminal} when the job grew.`,
+    why: () => "",
     who: APPLY,
     sampleDocIds: ["doc-method"],
   },
   "hot-work": {
     what: "Welding, cutting, grinding, or an open flame.",
-    why: (unit) =>
-      `Needed at ${unit.terminal} when those works apply.`,
+    why: () => "",
     who: AES_ISSUES,
     sampleDocIds: ["doc-method"],
   },
   ceiling: {
     what: "Open ceiling panels outside the unit.",
-    why: (unit) =>
-      `Needed at ${unit.terminal} when you work above the ceiling.`,
+    why: () => "",
     who: APPLY,
     sampleDocIds: ["doc-method"],
   },
   fai: {
     what: "Work that could set off alarms or sprinklers.",
-    why: (unit) =>
-      `Needed at ${unit.terminal} before you isolate fire systems.`,
+    why: () => "",
     who: AES_ISSUES,
     sampleDocIds: [],
   },
   authority: {
     what: "Approval from a government agency.",
-    why: (unit) =>
-      `Needed at ${unit.terminal} when an agency must endorse the works.`,
+    why: () => "",
     who: APPLY,
     sampleDocIds: [],
   },
   mep: {
     what: "Electrical, air-con, plumbing, or sprinklers.",
-    why: (unit) =>
-      `Needed at ${unit.terminal} when you change those systems.`,
+    why: () => "",
     who: APPLY,
     sampleDocIds: ["doc-elec"],
   },
@@ -73,7 +68,7 @@ const EXPLAIN: Record<string, PermitExplain> = {
     what: "A 3D model of the fit-out.",
     why: (unit) =>
       unit.terminal === "T3"
-        ? "Needed at T3 for larger fit-outs."
+        ? "T3 needs this for larger fit-outs."
         : `Not required at ${unit.terminal}.`,
     otherTerminals: (unit) =>
       unit.terminal === "T3" ? "T1, T2, and T4 do not need BIM." : null,
@@ -84,7 +79,7 @@ const EXPLAIN: Record<string, PermitExplain> = {
     what: "Phone or data lines inside T3.",
     why: (unit) =>
       unit.terminal === "T3"
-        ? "Needed at T3 when you add phone or data."
+        ? "This unit is in T3."
         : `Not used at ${unit.terminal}.`,
     otherTerminals: (unit) =>
       unit.terminal === "T3"
@@ -95,8 +90,7 @@ const EXPLAIN: Record<string, PermitExplain> = {
   },
   "indoor-cabling": {
     what: "Indoor or outdoor data cabling.",
-    why: (unit) =>
-      `Needed at ${unit.terminal} when you add cabling.`,
+    why: () => "",
     otherTerminals: (unit) =>
       unit.terminal === "T3"
         ? "T3 also needs a telephone cabling permit."
@@ -106,8 +100,7 @@ const EXPLAIN: Record<string, PermitExplain> = {
   },
   telco: {
     what: "Phone or internet company cabling.",
-    why: (unit) =>
-      `Needed at ${unit.terminal} when a telco runs cable.`,
+    why: () => "",
     who: APPLY,
     sampleDocIds: [],
   },
@@ -115,7 +108,7 @@ const EXPLAIN: Record<string, PermitExplain> = {
     what: "Access to the T4 catwalk.",
     why: (unit) =>
       unit.terminal === "T4"
-        ? "Needed at T4 for catwalk access."
+        ? "This unit is in T4."
         : `Not used at ${unit.terminal}.`,
     otherTerminals: (unit) =>
       unit.terminal === "T4"
@@ -129,7 +122,7 @@ const EXPLAIN: Record<string, PermitExplain> = {
     why: (unit) =>
       unit.terminal === "T4"
         ? "Not used at T4."
-        : `Needed at ${unit.terminal} near the Skytrain.`,
+        : `This unit is at ${unit.terminal}.`,
     otherTerminals: (unit) =>
       unit.terminal === "T4" ? null : "T4 has no Skytrain permit.",
     who: APPLY,
@@ -139,8 +132,8 @@ const EXPLAIN: Record<string, PermitExplain> = {
     what: "Work on the airside.",
     why: (unit) =>
       unit.zone === "Airside"
-        ? `Needed at ${unit.terminal} airside units.`
-        : `Not used on ${unit.terminal} landside.`,
+        ? `This unit is ${unit.terminal} airside.`
+        : `This unit is ${unit.terminal} landside. This permit is not used.`,
     who: APPLY,
     sampleDocIds: [],
   },
@@ -148,7 +141,7 @@ const EXPLAIN: Record<string, PermitExplain> = {
     what: "Security rules in the T4 transit area.",
     why: (unit) =>
       unit.terminal === "T4"
-        ? "Needed at T4 transit units."
+        ? "This unit is in the T4 transit area."
         : `Not used at ${unit.terminal}.`,
     otherTerminals: (unit) =>
       unit.terminal === "T4"

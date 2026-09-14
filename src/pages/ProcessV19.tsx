@@ -1,13 +1,19 @@
 import {
   Children,
+  createContext,
+  Fragment,
+  useContext,
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type KeyboardEvent,
   type ReactNode,
+  type RefObject,
 } from "react";
+import { createPortal } from "react-dom";
 import { Link, useSearchParams } from "react-router-dom";
 import {
   PHASES,
@@ -19,6 +25,9 @@ import {
 } from "@/lib/tenancy-data";
 import { useApp, type Role } from "@/lib/app-state";
 import {
+  actorLabelsForSub,
+  alsoHappeningText,
+  cardActor,
   classifyStage,
   displayText,
   docsByIds,
@@ -43,8 +52,7 @@ import { splitStepDocs, verbForDoc } from "@/lib/process-v12-docs";
 import { permitExplainFor } from "@/lib/process-permit-explain";
 import {
   EMPTY_SUPPORTING_DOCS,
-  needLabel,
-  supplierLine,
+  needLabelCompact,
   supportingDocsFor,
 } from "@/lib/process-permit-supporting-docs";
 import {
@@ -52,6 +60,12 @@ import {
   PTW_PACK_HOST,
   PTW_PACK_TYPES_LABEL,
 } from "@/lib/process-ptw-pack";
+import {
+  CONTRACTOR_JOBS,
+  LS_JOB,
+  LS_OUTLET,
+  kickoffSoonForUnit,
+} from "@/lib/process-job-context";
 import {
   answerSummaryLines,
   applySlugsToQuiz,
@@ -62,6 +76,9 @@ import {
   filterClassifiedByPlannedWorks,
   injectPlannedWorksQuiz,
   isOptionOn,
+  filledDemoQuiz,
+  midwayDemoQuiz,
+  questionHasAnswer,
   KICKOFF_STAGE_NAME,
   KICKOFF_STEP_NAME,
   NONE_ID,
@@ -71,9 +88,11 @@ import {
   quizCopy,
   quizEditMode,
   quizHasSavedAnswers,
+  quizHasUnanswered,
   quizIsConfirmed,
   quizNeedsOfficerGuide,
   quizPermitResult,
+  quizProgress,
   quizStickyCopy,
   quizReviewRows,
   settleQuizWrite,
@@ -91,76 +110,28 @@ import {
   type QuestionId,
   type QuizQuestion,
   type QuizState,
+  type QuizStickyTone,
+  type QuizStickyTrackStep,
   type SlugFlag,
 } from "@/lib/process-planned-works-quiz";
-import {
-  hitsForQuery,
-  matchNeedles,
-  preferredHitForQuery,
-  QUICK_LINK_CANDIDATES,
-  normalizeQuery,
-  type CardSearchSurface,
-  type SearchHit,
-  type SearchVerb,
-} from "@/lib/process-v15-search";
 import { DocumentPreviewDrawer } from "@/components/DocumentPreviewDrawer";
 import { cn } from "@/lib/utils";
 import caretDown from "@/assets/figma/caret-down.svg";
-import caretUp from "@/assets/figma/caret-up.svg";
-import chevronRight from "@/assets/figma/chevron-right.svg";
+import checkIcon from "@/assets/figma/check.svg";
 import closeIcon from "@/assets/figma/close.svg";
 import dotIcon from "@/assets/figma/dot.svg";
+import exclamationAlert from "@/assets/figma/exclamation-alert.svg";
 import externalLink from "@/assets/figma/external-link.svg";
 import infoIcon from "@/assets/figma/info.svg";
 import linkIcon from "@/assets/figma/link.svg";
 import pdfIcon from "@/assets/figma/pdf.svg";
+import reviewsIcon from "@/assets/figma/reviews.svg";
 
 const LS_KEY = "tempo:v17:lastPhase";
-const LS_OUTLET = "tempo:v7:outlet";
-const LS_JOB = "tempo:v7:job";
 
-type ContractorJob = {
-  id: string;
-  label: string;
-  unit: Unit;
-  appointed: boolean;
-  kickoffSoon?: boolean;
-};
-
-const CONTRACTOR_JOBS: ContractorJob[] = [
-  {
-    id: "job-kopi-t3",
-    label: "Kopi & Co. · T3-AS-114",
-    unit: UNITS[0],
-    appointed: true,
-  },
-  {
-    id: "job-kopi-t2",
-    label: "Kopi & Co. · T2-AS-045",
-    unit: UNITS[2],
-    appointed: true,
-    kickoffSoon: true,
-  },
-  {
-    id: "job-watch-t2",
-    label: "The Watch Boutique · A1-22",
-    unit: {
-      id: "wb-a122",
-      unitNo: "A1-22",
-      terminal: "T2",
-      tenancyType: "Retail",
-      zone: "Airside",
-      company: "The Watch Boutique",
-    },
-    appointed: true,
-  },
-  {
-    id: "job-pending-t2",
-    label: "Pending appointment · T2-AS-045",
-    unit: UNITS[2],
-    appointed: false,
-  },
-];
+/** Runway All Caps — 12/16 Bold, Grey/400. Swimlane and section labels. */
+const LABEL_CAPS =
+  "text-xs leading-4 font-bold uppercase tracking-[0.08em] text-grey-400";
 
 const TAB_LABEL: Record<Phase["id"], string> = {
   setup: "SetUp",
@@ -233,7 +204,7 @@ function nearestScroller(el: HTMLElement | null): HTMLElement | Window {
   return window;
 }
 
-/** Viewport line the spy treats as “here” — never follow the search card off-screen. */
+/** Viewport line the spy treats as “here”. */
 function spyReadLine() {
   const pin = railPinEl();
   if (pin) return pin.getBoundingClientRect().bottom + 8;
@@ -248,6 +219,17 @@ function scrollYOf(scroller: HTMLElement | Window) {
   return scroller === window
     ? window.scrollY
     : (scroller as HTMLElement).scrollTop;
+}
+
+function isScrollerAtEnd(scroller: HTMLElement | Window, slop = 24) {
+  if (scroller === window) {
+    const doc = document.documentElement;
+    return (
+      window.scrollY + window.innerHeight >= doc.scrollHeight - slop
+    );
+  }
+  const el = scroller as HTMLElement;
+  return el.scrollTop + el.clientHeight >= el.scrollHeight - slop;
 }
 
 function setScrollY(
@@ -270,18 +252,14 @@ function visiblePinEl(el: HTMLElement | null): HTMLElement | null {
 }
 
 function railPinEl(): HTMLElement | null {
-  return (
-    visiblePinEl(
-      document.querySelector<HTMLElement>(".process-search-sticky.is-stuck"),
-    ) ?? visiblePinEl(document.getElementById("process-v19-search-bar"))
-  );
+  return visiblePinEl(document.getElementById("process-v19-mobile-pin"));
 }
 
-/** Pin a card just below the stuck You-are-here bar (or the in-flow search). */
+/** Pin a card just below the mobile sticky journey chrome. */
 function alignCardToRail(el: HTMLElement, behavior: ScrollBehavior = "smooth") {
-  const search = railPinEl();
+  const pin = railPinEl();
   const scroller = nearestScroller(el);
-  const pinTop = search ? search.getBoundingClientRect().bottom + 16 : 32;
+  const pinTop = pin ? pin.getBoundingClientRect().bottom + 16 : 32;
   const delta = el.getBoundingClientRect().top - pinTop;
   if (Math.abs(delta) < 2) return;
   setScrollY(scroller, scrollYOf(scroller) + delta, behavior);
@@ -342,6 +320,60 @@ function IconLeaf({
   );
 }
 
+/** B2B icon-only — Icon Semi-Rounded Tertiary (Runway Buttons). */
+function OverlayIconBtn({
+  label,
+  onClick,
+  children,
+}: {
+  label: string;
+  onClick: () => void;
+  children: ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      aria-label={label}
+      onClick={onClick}
+      className="grid size-10 shrink-0 place-items-center rounded-[var(--radius-md)] text-black hover:bg-grey-50 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]"
+    >
+      {children}
+    </button>
+  );
+}
+
+function OverlayCloseGlyph() {
+  return (
+    <IconLeaf
+      src={closeIcon}
+      leafW={16}
+      leafH={16}
+      frame={24}
+      colorClass="text-black"
+    />
+  );
+}
+
+function OverlayBackBtn({ onClick }: { onClick: () => void }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="inline-flex items-center gap-1 text-sm leading-[18px] font-bold text-purple-600 hover:text-purple-700 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]"
+    >
+      <IconLeaf
+        src={caretDown}
+        leafW={10}
+        leafH={5.83}
+        frame={16}
+        rotate={90}
+        colorClass="text-current"
+      />
+      Back
+    </button>
+  );
+}
+
 function OutlineChip({
   children,
   warn,
@@ -351,7 +383,7 @@ function OutlineChip({
 }) {
   if (warn) {
     return (
-      <span className="inline-flex h-6 w-fit shrink-0 items-center rounded-[var(--radius-sm)] bg-warning-200 px-2 text-[11px] leading-[14px] font-bold text-warning-800">
+      <span className="inline-flex h-6 w-fit shrink-0 items-center rounded-[var(--radius-sm)] bg-warning-200 px-2 text-xs leading-4 font-bold text-warning-800">
         {children}
       </span>
     );
@@ -372,7 +404,7 @@ function FieldSection({
 }) {
   return (
     <section className="flex flex-col gap-3 border-t border-grey-100 pt-4">
-      <h4 className="text-xs font-bold uppercase tracking-[0.08em] text-grey-400">
+      <h4 className={LABEL_CAPS}>
         {label}
       </h4>
       {children}
@@ -383,84 +415,189 @@ function FieldSection({
 /** Possible-apply nudge — cream panel with the fill action. */
 function Banner({
   children,
+  subtitle,
+  hint,
   actions,
   body,
+  footer,
   fold,
-  compact,
-  defaultOpen = false,
+  tone = "warn",
+  onActivate,
+  activateLabel,
 }: {
   children?: ReactNode;
+  subtitle?: string;
+  hint?: string;
   actions?: ReactNode;
   body?: ReactNode;
+  footer?: ReactNode;
   fold?: boolean;
-  compact?: boolean;
+  tone?: QuizStickyTone;
+  onActivate?: () => void;
+  activateLabel?: string;
+  /** Kept so callers can pass it. Fold always opens overlay, so it is unused. */
   defaultOpen?: boolean;
 }) {
-  const panelId = useId();
-  const [open, setOpen] = useState(defaultOpen);
+  const titleId = useId();
+  const titleText = typeof children === "string" ? children : "Details";
+  const faceSubtitle = hint ?? (!fold ? subtitle : undefined);
+  const detailSubtitle = fold ? subtitle : undefined;
+  const [open, setOpen] = useState(false);
+  const overlayFold = Boolean(fold);
+
   const headerIcon = (
-    <span aria-hidden className="inline-flex shrink-0">
-      <IconLeaf src={infoIcon} leafW={16} leafH={16} frame={16} />
+    <span
+      aria-hidden
+      className={cn("inline-flex shrink-0", faceSubtitle && "mt-0.5")}
+    >
+      <IconLeaf
+        src={infoIcon}
+        leafW={16}
+        leafH={16}
+        frame={16}
+        colorClass={
+          tone === "start"
+            ? "text-purple-600"
+            : tone === "quiet"
+              ? "text-grey-600"
+              : "text-warning-600"
+        }
+      />
     </span>
   );
   const message = children ? (
-    <p
-      className={cn(
-        "min-w-0 flex-1 font-bold text-grey-700",
-        compact
-          ? "text-sm leading-[18px]"
-          : "text-base leading-5",
-      )}
-    >
-      {children}
-    </p>
+    <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+      <p className="text-sm leading-[18px] font-bold text-grey-700">
+        {children}
+      </p>
+      {faceSubtitle ? (
+        <p className="text-sm leading-[18px] font-normal text-grey-600">
+          {faceSubtitle}
+        </p>
+      ) : null}
+    </div>
   ) : null;
-  return (
-    <div
-      role="status"
-      className={cn(
-        "flex flex-col gap-3 rounded-[var(--radius-md)] border border-warning-200 bg-warning-100 px-3",
-        fold && open ? "py-3" : "py-2",
-      )}
+  const surface = cn(
+    "flex flex-col gap-3 rounded-[var(--radius-md)] border px-3",
+    tone === "start"
+      ? "border-purple-200 bg-purple-100"
+      : tone === "quiet"
+        ? "border-grey-100 bg-grey-50"
+        : "border-warning-200 bg-warning-100",
+    overlayFold ? "py-2" : "py-3",
+    onActivate &&
+      "w-full cursor-pointer text-left focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]",
+    onActivate &&
+      (tone === "start"
+        ? "hover:bg-purple-200"
+        : tone === "quiet"
+          ? "hover:bg-grey-100"
+          : "hover:bg-warning-200"),
+  );
+  const caret = (
+    <span
+      className="inline-flex size-7 shrink-0 items-center justify-center"
+      aria-hidden
     >
-      {fold ? (
+      <IconLeaf
+        src={caretDown}
+        leafW={10}
+        leafH={5.83}
+        frame={16}
+        rotate={-90}
+      />
+    </span>
+  );
+  const row = (
+    <>
+      {overlayFold ? (
         <button
           type="button"
           aria-expanded={open}
-          aria-controls={panelId}
-          onClick={() => setOpen((v) => !v)}
+          aria-haspopup="dialog"
+          aria-controls={titleId}
+          onClick={() => setOpen(true)}
           className="flex w-full items-center gap-2 text-left focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--color-purple-600)]"
         >
           {headerIcon}
           {message}
-          <span
-            className="inline-flex size-7 shrink-0 items-center justify-center"
-            aria-hidden
-          >
-            <IconLeaf
-              src={caretUp}
-              leafW={12}
-              leafH={7}
-              frame={16}
-              rotate={open ? undefined : 180}
-            />
-          </span>
+          {caret}
         </button>
       ) : (
-        <div className="flex items-center gap-2">
+        <div
+          className={cn(
+            "flex gap-2",
+            faceSubtitle ? "items-start" : "items-center",
+          )}
+        >
           {headerIcon}
           {message}
           {actions ? <div className="shrink-0">{actions}</div> : null}
         </div>
       )}
-      {fold
-        ? open && (
-            <div id={panelId} className="flex flex-col items-start gap-3">
-              {actions}
-              {body}
-            </div>
-          )
-        : body}
+      {overlayFold ? (
+        <PermitDetailOverlay
+          open={open}
+          title={titleText}
+          titleId={titleId}
+          subtitle={detailSubtitle}
+          footer={
+            footer ? (
+              <div onClickCapture={() => setOpen(false)}>{footer}</div>
+            ) : undefined
+          }
+          onClose={() => setOpen(false)}
+        >
+          <div className="flex w-full flex-col items-stretch gap-3">
+            {actions}
+            {body}
+          </div>
+        </PermitDetailOverlay>
+      ) : (
+        body
+      )}
+    </>
+  );
+  if (onActivate && !overlayFold) {
+    return (
+      <button
+        type="button"
+        onClick={onActivate}
+        aria-label={activateLabel}
+        className={surface}
+      >
+        {row}
+      </button>
+    );
+  }
+  return (
+    <div role="status" className={surface}>
+      {row}
+    </div>
+  );
+}
+
+function GuideNote({ children }: { children: string }) {
+  return (
+    <div
+      role="note"
+      className="flex w-full items-start gap-2 rounded-[var(--radius-md)] border border-purple-200 bg-purple-100 px-3 py-3"
+    >
+      <span className="mt-0.5 inline-flex shrink-0" aria-hidden>
+        <IconLeaf
+          src={infoIcon}
+          leafW={16}
+          leafH={16}
+          frame={16}
+          colorClass="text-purple-600"
+        />
+      </span>
+      <div className="flex min-w-0 flex-1 flex-col gap-1">
+        <p className={LABEL_CAPS}>Note</p>
+        <p className="text-sm leading-[18px] font-bold text-grey-700">
+          {children}
+        </p>
+      </div>
     </div>
   );
 }
@@ -607,10 +744,10 @@ function chipTypeLabel(workIf: string | undefined, duration: string) {
 
 /** Attribute chip — timing / SLA. Blue info so lead time scans. */
 const CHIP_WHEN =
-  "inline-flex w-fit shrink-0 items-center rounded-full border border-blue-600 bg-blue-100 px-2 py-1 text-[11px] leading-[14px] font-bold whitespace-nowrap text-blue-600";
+  "inline-flex w-fit shrink-0 items-center rounded-full border border-blue-600 bg-blue-100 px-2 py-1 text-xs leading-4 font-bold whitespace-nowrap text-blue-600";
 /** Status chip — only when Planned works has not confirmed this row. */
 const CHIP_MAY_APPLY =
-  "inline-flex h-6 w-fit shrink-0 items-center rounded-[var(--radius-sm)] bg-warning-100 px-2 text-[11px] leading-[14px] font-bold text-warning-600";
+  "inline-flex h-6 w-fit shrink-0 items-center rounded-[var(--radius-sm)] bg-warning-100 px-2 text-xs leading-4 font-bold text-warning-600";
 
 function WhenChip({
   duration,
@@ -797,7 +934,7 @@ function DocTypeGroup({
         !flush && "border-t border-grey-100 pt-4",
       )}
     >
-      <h4 className="text-xs font-bold uppercase tracking-[0.08em] text-grey-400">
+      <h4 className={LABEL_CAPS}>
         {label}
       </h4>
       <ul className="overflow-hidden rounded-[var(--radius-md)] border border-grey-100 bg-white">
@@ -853,7 +990,7 @@ function SystemTypeGroup({
   if (systems.length === 0) return null;
   return (
     <section className="flex flex-col gap-2">
-      <h4 className="text-xs font-bold uppercase tracking-[0.08em] text-grey-400">
+      <h4 className={LABEL_CAPS}>
         System links
       </h4>
       <ul className="overflow-hidden rounded-[var(--radius-md)] border border-grey-100 bg-white">
@@ -907,8 +1044,10 @@ function BulletList({ lines }: { lines: string[] }) {
   );
 }
 
-function possibleCopy(mode: QuizEditMode) {
-  if (mode === "read") return quizCopy.tenantPossibleLine;
+function possibleCopy(mode: QuizEditMode, aligning = false) {
+  if (mode === "read") {
+    return aligning ? quizCopy.tenantAlignHint : quizCopy.tenantPossibleLine;
+  }
   if (mode === "correct") return quizCopy.officerPossibleLine;
   return quizCopy.possibleLine;
 }
@@ -919,90 +1058,569 @@ function possibleChip(mode: QuizEditMode) {
   return quizCopy.possibleChip;
 }
 
-function QuizNudge({
-  status,
-  mode,
-  onOpen,
+function possibleChipHint(mode: QuizEditMode, aligning = false) {
+  if (mode === "read") {
+    return aligning
+      ? quizCopy.tenantAlignHint
+      : quizCopy.tenantPossibleChipHint;
+  }
+  if (mode === "correct") return quizCopy.officerPossibleChipHint;
+  return quizCopy.possibleChipHint;
+}
+
+function partyKey(labels?: string[]) {
+  return (labels ?? []).join(" · ");
+}
+
+function groupByParty<T extends { labels?: string[] }>(rows: T[]) {
+  const groups: { key: string; labels: string[]; rows: T[] }[] = [];
+  for (const row of rows) {
+    const key = partyKey(row.labels);
+    const last = groups[groups.length - 1];
+    if (last && last.key === key) last.rows.push(row);
+    else groups.push({ key, labels: row.labels ?? [], rows: [row] });
+  }
+  return groups;
+}
+
+function GuideBullet({
+  line,
+  size = "body",
 }: {
-  status: QuizState["status"];
-  mode: QuizEditMode;
-  onOpen: () => void;
+  line: string;
+  size?: "body" | "how";
 }) {
-  const title =
-    mode === "read"
-      ? quizCopy.bannerTenantTitle
-      : mode === "correct"
-        ? quizCopy.bannerOfficerTitle
-        : quizCopy.bannerContractorTitle;
-  const text =
-    mode === "read"
-      ? quizCopy.bannerTenant
-      : mode === "correct"
-        ? quizCopy.bannerOfficer
-        : status === "paused"
-          ? quizCopy.bannerContractorPaused
-          : quizCopy.bannerContractor;
-  const cta =
-    mode === "fill"
-      ? status === "idle"
-        ? quizCopy.startCta
-        : status === "paused"
-          ? quizCopy.resumeCta
-          : status === "done"
-            ? quizCopy.confirmCta
-            : "Finish Questions"
-      : mode === "correct"
-        ? quizCopy.officerConfirmCta
-        : quizCopy.reviewCta;
   return (
-    <div className="flex flex-col gap-3 rounded-[var(--radius-2xl)] border border-purple-200 bg-purple-100 px-4 py-3 shadow-[var(--shadow-light-bg)] tablet:flex-row tablet:items-center tablet:justify-between tablet:gap-4">
-      <div className="flex min-w-0 flex-col gap-1">
-        <p className="text-sm leading-[18px] font-bold text-black">{title}</p>
-        <p className="text-sm leading-[18px] text-grey-700">{text}</p>
-      </div>
-      <button
-        type="button"
-        onClick={onOpen}
-        className="inline-flex h-8 w-fit shrink-0 items-center self-start rounded-[var(--radius-sm)] bg-purple-600 px-3 text-sm leading-[18px] font-bold whitespace-nowrap text-white hover:bg-purple-700 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]"
+    <li className="flex items-start gap-1.5">
+      <span className={size === "body" ? "mt-1 shrink-0" : "mt-0.5 shrink-0"}>
+        <IconLeaf src={dotIcon} leafW={5.33} leafH={5.33} frame={16} />
+      </span>
+      <p
+        className={
+          size === "body"
+            ? "min-w-0 flex-1 text-base leading-5 text-grey-600"
+            : "min-w-0 flex-1 text-sm leading-[18px] text-grey-900"
+        }
       >
-        {cta}
-      </button>
+        {line}
+      </p>
+    </li>
+  );
+}
+
+function PartyHead({ labels }: { labels: string[] }) {
+  const mine = labels.length === 1 && labels[0] === "You";
+  return (
+    <p
+      className={cn(
+        LABEL_CAPS,
+        mine && "text-purple-700",
+        "flex items-center gap-1",
+      )}
+    >
+      {labels.map((label, i) => (
+        <Fragment key={`${i}-${label}`}>
+          {i > 0 && (
+            <span aria-hidden className="inline-flex shrink-0">
+              <IconLeaf
+                src={dotIcon}
+                leafW={5.33}
+                leafH={5.33}
+                frame={8}
+                colorClass={mine ? "text-purple-700" : "text-grey-400"}
+              />
+            </span>
+          )}
+          <span>{label}</span>
+        </Fragment>
+      ))}
+    </p>
+  );
+}
+
+function PartyLineList({
+  rows,
+  size = "body",
+}: {
+  rows: { line: string; labels?: string[] }[];
+  size?: "body" | "how";
+}) {
+  const groups = groupByParty(rows);
+  const showHeads = groups.some((group) => group.labels.length > 0);
+  return (
+    <div className={showHeads ? "flex flex-col gap-4" : undefined}>
+      {groups.map((group, gi) => (
+        <div
+          key={`${gi}-${group.key}`}
+          className={cn(
+            "flex flex-col gap-2",
+            showHeads &&
+              group.labels.length > 0 &&
+              cn(
+                "rounded-[var(--radius-md)] px-3 py-3",
+                group.labels.length === 1 && group.labels[0] === "You"
+                  ? "bg-purple-100"
+                  : "bg-grey-50",
+              ),
+          )}
+        >
+          {showHeads && group.labels.length > 0 && (
+            <PartyHead labels={group.labels} />
+          )}
+          <ul
+            className={
+              size === "how" ? "flex flex-col gap-3" : "flex flex-col gap-2"
+            }
+          >
+            {group.rows.map((row, i) => (
+              <GuideBullet
+                key={`${i}-${row.line}`}
+                line={row.line}
+                size={size}
+              />
+            ))}
+          </ul>
+        </div>
+      ))}
     </div>
+  );
+}
+
+
+function WorksPip({ on, warn }: { on: boolean; warn: boolean }) {
+  return (
+    <svg
+      width="12"
+      height="12"
+      viewBox="0 0 12 12"
+      className={cn(
+        "size-3 shrink-0",
+        warn
+          ? "text-warning-600"
+          : on
+            ? "text-purple-600"
+            : "text-purple-300",
+      )}
+      aria-hidden
+    >
+      {on ? (
+        <circle cx="6" cy="6" r="6" fill="currentColor" />
+      ) : (
+        <circle
+          cx="6"
+          cy="6"
+          r="5"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+        />
+      )}
+    </svg>
+  );
+}
+
+/** Runway Tooltip — Dark Card on Light Mode. */
+function DlsTooltip({
+  id,
+  open,
+  side = "bottom",
+  align = "center",
+  anchorRef,
+  children,
+}: {
+  id: string;
+  open: boolean;
+  side?: "top" | "bottom";
+  align?: "center" | "end";
+  anchorRef?: RefObject<HTMLElement | null>;
+  children: string;
+}) {
+  const [box, setBox] = useState<{
+    top?: number;
+    bottom?: number;
+    left: number;
+    tipW: number;
+    above: boolean;
+    arrowOffset: number;
+  } | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open || !anchorRef?.current) {
+      setBox(null);
+      return;
+    }
+    const place = () => {
+      const anchor = anchorRef.current;
+      if (!anchor) return;
+      const ar = anchor.getBoundingClientRect();
+      const pad = 8;
+      const gap = 8;
+      const tipW = Math.min(240, window.innerWidth - pad * 2);
+      const guessH = 88;
+      const spaceAbove = ar.top - pad;
+      const spaceBelow = window.innerHeight - ar.bottom - pad;
+      const above =
+        side === "top"
+          ? spaceAbove >= guessH || spaceAbove >= spaceBelow
+          : spaceBelow >= guessH || spaceBelow > spaceAbove;
+      let left =
+        align === "end" ? ar.right - tipW : ar.left + ar.width / 2 - tipW / 2;
+      left = Math.min(Math.max(left, pad), window.innerWidth - tipW - pad);
+      const iconMid = ar.left + ar.width / 2;
+      const arrowOffset = Math.min(Math.max(iconMid - left, 12), tipW - 12);
+      setBox(
+        above
+          ? {
+              bottom: window.innerHeight - ar.top + gap,
+              left,
+              tipW,
+              above,
+              arrowOffset,
+            }
+          : { top: ar.bottom + gap, left, tipW, above, arrowOffset },
+      );
+    };
+    place();
+    window.addEventListener("scroll", place, true);
+    window.addEventListener("resize", place);
+    return () => {
+      window.removeEventListener("scroll", place, true);
+      window.removeEventListener("resize", place);
+    };
+  }, [open, side, align, anchorRef, children]);
+
+  const above = box?.above ?? side === "top";
+  const end = align === "end";
+  const portaled = Boolean(open && box && anchorRef);
+
+  const node = (
+    <span
+      id={id}
+      role="tooltip"
+      style={
+        portaled
+          ? {
+              position: "fixed",
+              top: box.top,
+              bottom: box.bottom,
+              left: box.left,
+              width: box.tipW,
+            }
+          : undefined
+      }
+      className={cn(
+        "pointer-events-none z-50 w-max max-w-[min(240px,calc(100vw-2rem))]",
+        !portaled && "absolute",
+        !portaled && (end ? "right-0" : "left-1/2 -translate-x-1/2"),
+        !portaled && (above ? "bottom-[calc(100%+8px)]" : "top-[calc(100%+8px)]"),
+        "rounded-[var(--radius-sm)] bg-black px-3 py-2",
+        "text-xs leading-4 font-normal text-white",
+        "shadow-[var(--shadow-light-bg)]",
+        open ? "block" : "hidden",
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "absolute size-2 rotate-45 bg-black",
+          above ? "-bottom-1" : "-top-1",
+          !portaled && (end ? "right-1.5" : "left-1/2 -translate-x-1/2"),
+        )}
+        style={
+          portaled
+            ? { left: box.arrowOffset, transform: "translateX(-50%) rotate(45deg)" }
+            : undefined
+        }
+      />
+      {children}
+    </span>
+  );
+
+  if (portaled) return createPortal(node, document.body);
+  return node;
+}
+
+function MayApplyChip({ label, hint }: { label: string; hint: string }) {
+  const tipId = useId();
+  return (
+    <span className="group relative inline-flex">
+      <span
+        tabIndex={0}
+        aria-label={`${label}. ${hint}`}
+        aria-describedby={tipId}
+        onClick={(e) => e.stopPropagation()}
+        className={cn(
+          CHIP_MAY_APPLY,
+          "gap-1 cursor-help focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]",
+        )}
+      >
+        {label}
+        <span aria-hidden className="inline-flex shrink-0">
+          <IconLeaf
+            src={infoIcon}
+            leafW={12}
+            leafH={12}
+            frame={12}
+            colorClass="text-warning-600"
+          />
+        </span>
+      </span>
+      <span
+        id={tipId}
+        role="tooltip"
+        className="pointer-events-none absolute left-1/2 top-[calc(100%+8px)] z-30 hidden w-max max-w-[min(240px,calc(100vw-2rem))] -translate-x-1/2 rounded-[var(--radius-sm)] bg-black px-3 py-2 text-xs leading-4 font-normal text-white shadow-[var(--shadow-light-bg)] group-hover:block group-focus-within:block"
+      >
+        <span
+          aria-hidden
+          className="absolute -top-1 left-1/2 size-2 -translate-x-1/2 rotate-45 bg-black"
+        />
+        {hint}
+      </span>
+    </span>
+  );
+}
+
+function SetupTrack({ steps }: { steps: QuizStickyTrackStep[] }) {
+  return (
+    <ol className="flex w-full min-w-0 items-start" aria-label="SetUp to permit">
+      {steps.map((step, i) => (
+        <li
+          key={step.label}
+          className={cn(
+            "flex min-w-0 items-start",
+            i < steps.length - 1 ? "flex-1" : "shrink-0",
+          )}
+        >
+          <span className="flex min-w-0 flex-col items-center gap-1">
+            <WorksPip on={step.state !== "ahead"} warn={false} />
+            <span
+              className={cn(
+                "text-xs leading-4",
+                step.state === "ahead"
+                  ? "font-normal text-grey-500"
+                  : "font-bold text-purple-700",
+              )}
+            >
+              {step.label}
+            </span>
+          </span>
+          {i < steps.length - 1 ? (
+            <span
+              className={cn(
+                "mt-1.5 h-0.5 min-w-3 flex-1",
+                step.state === "done" ? "bg-purple-600" : "bg-grey-200",
+              )}
+              aria-hidden
+            />
+          ) : null}
+        </li>
+      ))}
+    </ol>
   );
 }
 
 function WorksSticky({
   title,
+  subtitle,
   cta,
+  answered = 0,
+  total = 0,
+  track,
+  tip,
   onOpen,
 }: {
   title: string;
+  subtitle: string;
   cta: string;
+  answered?: number;
+  total?: number;
+  track?: QuizStickyTrackStep[];
+  tip?: string;
   onOpen: () => void;
 }) {
+  const tipId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const tipAnchorRef = useRef<HTMLSpanElement>(null);
+  const mobile = useMobileViewport();
+  const [tipOn, setTipOn] = useState(false);
+  const pipCount = Math.max(total, 1);
+  const fraction = `${answered}/${pipCount}`;
+  const milestone = Boolean(track && track.length > 0);
+  const finished = !milestone && total > 0 && answered >= total;
+  const midway = !milestone && !finished && answered > 0;
+
+  useEffect(() => {
+    if (!tipOn) return;
+    const onDoc = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setTipOn(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTipOn(false);
+    };
+    window.addEventListener("pointerdown", onDoc);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onDoc);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [tipOn]);
+
+  const infoColor = midway ? "text-warning-600" : "text-purple-700";
+  const caretColor = midway ? "text-warning-600" : "text-purple-700";
+  const countColor = midway ? "text-warning-800" : "text-purple-700";
+
   return (
-    <Banner
-      compact
-      actions={
+    <div ref={rootRef} className={cn("relative", tipOn && "z-20")}>
+      <div
+        className={cn(
+          "relative flex min-h-[76px] w-full items-center rounded-[var(--radius-2xl)] shadow-[var(--shadow-light-bg)]",
+          "gap-3 px-4 desktop:p-4",
+          milestone ? "py-4" : "py-3",
+          milestone
+            ? "border border-grey-200 bg-white hover:bg-grey-50 desktop:gap-4"
+            : finished
+              ? "bg-purple-100 hover:bg-purple-200 desktop:gap-4"
+              : midway
+                ? "bg-warning-100 hover:bg-warning-200 desktop:gap-4"
+                : "desktop:gap-2 bg-[image:var(--gradient-quiz-sticky)] hover:brightness-[0.97]",
+        )}
+      >
         <button
           type="button"
-          aria-label={cta}
           onClick={onOpen}
-          className="inline-flex size-8 shrink-0 items-center justify-center rounded-[var(--radius-sm)] text-warning-600 hover:bg-warning-200 hover:text-warning-800 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]"
+          aria-label={
+            milestone
+              ? `${title}. ${subtitle} ${cta}.`
+              : `${title}. ${subtitle} ${cta}. ${fraction} answered.`
+          }
+          className="absolute inset-0 z-0 rounded-[var(--radius-2xl)] focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]"
+        />
+        {milestone ? null : (
+        <span className="pointer-events-none relative inline-flex size-9 shrink-0 items-center justify-center" aria-hidden>
+          {finished ? (
+            <IconLeaf
+              src={checkIcon}
+              leafW={36}
+              leafH={36}
+              frame={36}
+              colorClass="text-purple-700"
+            />
+          ) : midway ? (
+            <IconLeaf
+              src={exclamationAlert}
+              leafW={36}
+              leafH={36}
+              frame={36}
+              colorClass="text-warning-700"
+            />
+          ) : (
+            <IconLeaf
+              src={reviewsIcon}
+              leafW={30}
+              leafH={25.51}
+              frame={36}
+              colorClass="text-purple-600"
+            />
+          )}
+        </span>
+        )}
+        <span
+          className={cn(
+            "pointer-events-none relative flex min-w-0 flex-1 flex-col",
+            milestone ? "gap-3" : "gap-1",
+          )}
+        >
+          <span
+            className={cn(
+              "inline-flex max-w-full items-center",
+              finished || milestone ? "gap-1.5" : "gap-2",
+            )}
+          >
+            <span className="min-w-0 truncate text-sm leading-[18px] font-bold text-black">
+              {title}
+            </span>
+            <span ref={tipAnchorRef} className="relative shrink-0">
+            <button
+              type="button"
+              aria-label="What this is for"
+              aria-expanded={tipOn}
+              aria-describedby={tipOn ? tipId : undefined}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                setTipOn((on) => !on);
+              }}
+              onMouseEnter={() => {
+                if (!mobile) setTipOn(true);
+              }}
+              onMouseLeave={() => {
+                if (!mobile) setTipOn(false);
+              }}
+              onFocus={() => {
+                if (!mobile) setTipOn(true);
+              }}
+              onBlur={() => {
+                if (!mobile) setTipOn(false);
+              }}
+              className="pointer-events-auto relative z-10 inline-flex shrink-0 appearance-none bg-transparent p-0 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]"
+            >
+              <span aria-hidden className="inline-flex shrink-0">
+                <IconLeaf
+                  src={infoIcon}
+                  leafW={16}
+                  leafH={16}
+                  frame={16}
+                  colorClass={infoColor}
+                />
+              </span>
+            </button>
+              <DlsTooltip
+                id={tipId}
+                open={tipOn}
+                side="top"
+                align="end"
+                anchorRef={tipAnchorRef}
+              >
+                {tip ?? quizCopy.stickyIntro}
+              </DlsTooltip>
+            </span>
+          </span>
+          {milestone && track ? (
+            <span className="flex flex-col gap-4">
+              <span className="text-xs leading-4 text-grey-700">{subtitle}</span>
+              <SetupTrack steps={track} />
+            </span>
+          ) : (
+          <span className="flex items-center gap-2" aria-hidden>
+            <span className="flex items-center gap-1.5">
+              {Array.from({ length: pipCount }, (_, i) => (
+                <WorksPip key={i} on={i < answered} warn={midway} />
+              ))}
+            </span>
+            <span className={cn("text-sm leading-[18px] font-bold", countColor)}>
+              {fraction}
+            </span>
+          </span>
+          )}
+        </span>
+        <span
+          className={cn(
+            "pointer-events-none relative grid size-6 shrink-0 place-items-center",
+            caretColor,
+          )}
+          aria-hidden
         >
           <IconLeaf
             src={caretDown}
-            leafW={10}
-            leafH={5.83}
-            frame={16}
+            leafW={12}
+            leafH={7}
+            frame={24}
             rotate={-90}
-            colorClass="text-current"
+            colorClass={caretColor}
           />
-        </button>
-      }
-    >
-      {title}
-    </Banner>
+        </span>
+      </div>
+    </div>
   );
 }
 
@@ -1025,7 +1643,7 @@ function PhaseTabStrip({
     <div
       role="tablist"
       aria-label="Phase"
-      className="flex w-full gap-1 rounded-[var(--radius-xl)] border border-grey-200 bg-grey-50 p-1 tablet:w-fit desktop:w-full"
+      className="flex w-full items-center gap-1 rounded-[var(--radius-xl)] border border-grey-200 bg-grey-50 p-1 tablet:w-fit desktop:w-full"
     >
       {phases.map((phase) => {
         const on = browsing && phase.id === activeId;
@@ -1040,7 +1658,7 @@ function PhaseTabStrip({
               on && browsing ? onReselectActive?.() : onSelect(phase.id)
             }
             className={cn(
-              "h-9 min-w-0 flex-1 rounded-[var(--radius-md)] px-2 text-sm leading-[18px] text-grey-700 tablet:flex-none tablet:px-3",
+              "inline-flex h-9 min-w-0 flex-1 items-center justify-center rounded-[var(--radius-md)] px-2 text-sm leading-[18px] text-grey-700 tablet:flex-none tablet:px-3 desktop:min-w-0 desktop:flex-1 desktop:px-2",
               on &&
                 "bg-white font-bold text-grey-700 shadow-[0px_1px_3px_rgba(18,18,18,0.1),0px_1px_2px_rgba(18,18,18,0.06)]",
               disabled && "text-grey-300",
@@ -1054,25 +1672,6 @@ function PhaseTabStrip({
   );
 }
 
-function PossibleDecideActions({
-  onApply,
-  onDismiss,
-}: {
-  onApply: () => void;
-  onDismiss: () => void;
-}) {
-  return (
-    <div className="flex flex-wrap items-center gap-2">
-      <GuideCta tone="ghost" onClick={onApply}>
-        {quizCopy.thisAppliesCta}
-      </GuideCta>
-      <GuideCta tone="text" onClick={onDismiss}>
-        {quizCopy.doesNotApplyCta}
-      </GuideCta>
-    </div>
-  );
-}
-
 function PlannedWorksSheet({
   open,
   questions,
@@ -1080,6 +1679,7 @@ function PlannedWorksSheet({
   onToggle,
   onSave,
   onClose,
+  allowUnsure = true,
 }: {
   open: boolean;
   questions: QuizQuestion[];
@@ -1087,7 +1687,150 @@ function PlannedWorksSheet({
   onToggle: (questionId: QuestionId, optionId: string) => void;
   onSave: () => void;
   onClose: () => void;
+  allowUnsure?: boolean;
 }) {
+  const mobile = useMobileViewport();
+  const wasOpen = useRef(false);
+  const [page, setPage] = useState(0);
+  const lastPage = Math.max(questions.length - 1, 0);
+
+  useEffect(() => {
+    if (!open) return;
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
+    };
+  }, [open, onClose]);
+
+  useEffect(() => {
+    if (!open) {
+      wasOpen.current = false;
+      return;
+    }
+    if (wasOpen.current) return;
+    wasOpen.current = true;
+    const firstOpen = questions.findIndex(
+      (question) => !questionHasAnswer(state.answers[question.id]),
+    );
+    setPage(firstOpen === -1 ? 0 : firstOpen);
+  }, [open, questions, state.answers]);
+
+  if (!open) return null;
+
+  const pageLabel = `${Math.min(page + 1, questions.length)} of ${questions.length}`;
+
+  return (
+    <div
+      className={cn(
+        "fixed inset-0 z-50 flex",
+        mobile
+          ? "items-end justify-end"
+          : "items-center justify-center p-6 tablet:p-8",
+      )}
+    >
+      <button
+        type="button"
+        aria-label="Close planned works"
+        className="absolute inset-0 bg-[rgba(18,18,18,0.4)]"
+        onClick={onClose}
+      />
+      <aside
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="planned-works-sheet-title"
+        className={cn(
+          "relative flex w-full flex-col bg-white shadow-[var(--shadow-light-bg)]",
+          mobile
+            ? "max-h-[90vh] rounded-t-[var(--radius-2xl)] border-t border-grey-100"
+            : "max-h-[80vh] max-w-xl rounded-[var(--radius-2xl)]",
+        )}
+      >
+        <header className="flex items-start justify-between gap-3 border-b border-grey-75 px-4 py-4 tablet:px-5">
+          <div className="min-w-0">
+            <h2
+              id="planned-works-sheet-title"
+              className="text-lg leading-[22px] font-bold text-black"
+            >
+              {quizCopy.sheetTitle}
+            </h2>
+            <p className="mt-1 text-sm leading-[18px] text-grey-700">
+              {quizCopy.bannerContractor}
+            </p>
+          </div>
+          <OverlayIconBtn label="Close" onClick={onClose}>
+            <OverlayCloseGlyph />
+          </OverlayIconBtn>
+        </header>
+        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 tablet:px-5">
+          <PlannedWorksForm
+            questions={questions.slice(page, page + 1)}
+            state={state}
+            onToggle={onToggle}
+            allowUnsure={allowUnsure}
+          />
+          <p className="mt-4 text-sm leading-[18px] text-grey-700">
+            {quizCopy.pauseHint}
+          </p>
+        </div>
+        <footer className="flex flex-col gap-3 border-t border-grey-75 px-4 py-3 tablet:px-5">
+          {questions.length > 0 && (
+            <div className="flex items-center justify-between gap-3">
+              {page > 0 ? (
+                <GuideCta
+                  tone="text"
+                  className="min-h-10 min-w-12 px-1"
+                  onClick={() => setPage((i) => i - 1)}
+                >
+                  Back
+                </GuideCta>
+              ) : (
+                <span className="min-w-12" />
+              )}
+              <p
+                className="inline-flex h-5 min-w-0 items-center rounded-full bg-purple-100 px-2 text-xs leading-4 font-normal text-purple-600"
+                aria-live="polite"
+              >
+                {pageLabel}
+              </p>
+              {page < lastPage ? (
+                <GuideCta
+                  tone="text"
+                  className="min-h-10 min-w-12 px-1"
+                  onClick={() => setPage((i) => i + 1)}
+                >
+                  Next
+                </GuideCta>
+              ) : (
+                <span className="min-w-12" />
+              )}
+            </div>
+          )}
+          <GuideCta className="h-10 min-h-10 w-full px-4" onClick={onSave}>
+            {quizCopy.sheetSaveCta}
+          </GuideCta>
+        </footer>
+      </aside>
+    </div>
+  );
+}
+
+function OfficerEditGate({
+  open,
+  onConfirm,
+  onClose,
+}: {
+  open: boolean;
+  onConfirm: () => void;
+  onClose: () => void;
+}) {
+  const mobile = useMobileViewport();
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
@@ -1105,57 +1848,97 @@ function PlannedWorksSheet({
   if (!open) return null;
 
   return (
-    <div className="fixed inset-0 z-50 flex justify-end">
+    <div
+      className={cn(
+        "fixed inset-0 z-[60] flex",
+        mobile
+          ? "items-end justify-end"
+          : "items-center justify-center p-6 tablet:p-8",
+      )}
+    >
       <button
         type="button"
-        aria-label="Close planned works"
+        aria-label="Close edit check"
         className="absolute inset-0 bg-[rgba(18,18,18,0.4)]"
         onClick={onClose}
       />
       <aside
         role="dialog"
         aria-modal="true"
-        aria-labelledby="planned-works-sheet-title"
-        className="relative mt-auto flex max-h-[90vh] w-full flex-col rounded-t-[var(--radius-2xl)] border-t border-grey-100 bg-white shadow-[var(--shadow-light-bg)] tablet:mt-0 tablet:h-full tablet:max-h-none tablet:max-w-xl tablet:rounded-none tablet:border-t-0 tablet:border-l desktop:max-w-xl"
+        aria-labelledby="officer-edit-gate-title"
+        aria-describedby="officer-edit-gate-body"
+        className={cn(
+          "relative flex w-full flex-col bg-white shadow-[var(--shadow-light-bg)]",
+          mobile
+            ? "rounded-t-[var(--radius-2xl)] border-t border-grey-100"
+            : "max-w-md rounded-[var(--radius-2xl)]",
+        )}
       >
         <header className="flex items-start justify-between gap-3 border-b border-grey-75 px-4 py-4 tablet:px-5">
-          <div className="min-w-0">
-            <h2
-              id="planned-works-sheet-title"
-              className="text-lg leading-[22px] font-bold text-black"
-            >
-              {quizCopy.sheetTitle}
-            </h2>
-            <p className="mt-1 text-sm leading-[18px] text-grey-700">
-              {quizCopy.bannerContractor}
-            </p>
-          </div>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            className="grid size-10 shrink-0 place-items-center rounded-[var(--radius-sm)] text-black hover:bg-grey-50 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]"
+          <h2
+            id="officer-edit-gate-title"
+            className="min-w-0 text-lg leading-[22px] font-bold text-black"
           >
-            <IconLeaf src={closeIcon} leafW={12} leafH={12} frame={16} />
-          </button>
+            {quizCopy.officerEditGateTitle}
+          </h2>
+          <OverlayIconBtn label="Close" onClick={onClose}>
+            <OverlayCloseGlyph />
+          </OverlayIconBtn>
         </header>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 tablet:px-5">
-          <PlannedWorksForm
-            questions={questions}
-            state={state}
-            onToggle={onToggle}
-          />
-          <p className="mt-4 text-sm leading-[18px] text-grey-700">
-            {quizCopy.pauseHint}
+        <div className="px-4 py-4 tablet:px-5">
+          <p
+            id="officer-edit-gate-body"
+            className="text-sm leading-[18px] text-grey-700"
+          >
+            {quizCopy.officerEditGateBody}
           </p>
         </div>
-        <footer className="border-t border-grey-75 px-4 py-3 tablet:px-5">
-          <GuideCta className="w-full tablet:w-fit" onClick={onSave}>
-            {quizCopy.sheetSaveCta}
+        <footer className="flex flex-col gap-3 border-t border-grey-75 px-4 py-3 tablet:px-5 tablet:flex-row tablet:justify-end">
+          <GuideCta
+            tone="ghost"
+            className="h-10 min-h-10 w-full px-4 tablet:w-fit"
+            onClick={onClose}
+          >
+            {quizCopy.officerEditGateCancel}
+          </GuideCta>
+          <GuideCta
+            className="h-10 min-h-10 w-full px-4 tablet:w-fit"
+            onClick={onConfirm}
+          >
+            {quizCopy.officerEditGateCta}
           </GuideCta>
         </footer>
       </aside>
     </div>
+  );
+}
+
+function PermitExplainStep({
+  n,
+  children,
+  note,
+}: {
+  n: number;
+  children: ReactNode;
+  note?: ReactNode;
+}) {
+  return (
+    <li className="flex gap-3">
+      <span
+        aria-hidden
+        className="grid size-6 shrink-0 place-items-center rounded-full bg-purple-200 text-xs leading-4 font-bold text-purple-700"
+      >
+        {n}
+      </span>
+      <div className="min-w-0 flex-1 pt-0.5">
+        <p className="text-sm leading-[18px] text-black">{children}</p>
+        {note ? (
+          <p className="mt-2 inline-flex max-w-full rounded-full bg-purple-100 px-3 py-1 text-sm leading-[18px] text-purple-700">
+            {note}
+          </p>
+        ) : null}
+      </div>
+    </li>
   );
 }
 
@@ -1167,6 +1950,8 @@ function PermitExplainBody({
   stepName,
   highlightedDocId,
   onPreview,
+  action,
+  timing,
 }: {
   name: string;
   unit: Unit;
@@ -1175,6 +1960,8 @@ function PermitExplainBody({
   stepName: string;
   highlightedDocId?: string | null;
   onPreview: (id: string) => void;
+  action?: string;
+  timing?: ReactNode;
 }) {
   const explain = permitExplainFor(name);
   const supporting = supportingDocsFor(name);
@@ -1192,18 +1979,46 @@ function PermitExplainBody({
   );
   if (!explain) return null;
   const other = explain.otherTerminals?.(unit) ?? null;
+  const why = explain.why(unit);
   return (
-    <div className="flex flex-col gap-2">
-      <p className="text-sm leading-[18px] text-grey-700">{explain.what}</p>
-      <p className="text-sm leading-[18px] text-grey-700">{explain.why(unit)}</p>
-      <p className="text-sm leading-[18px] text-grey-700">{explain.who[role]}</p>
-      {other && (
-        <p className="text-sm leading-[18px] text-grey-700">{other}</p>
+    <div className="flex flex-col gap-4">
+      {(action || timing) && (
+        <div className="flex items-start gap-2 rounded-[var(--radius-md)] border border-purple-200 bg-purple-100 px-3 py-3">
+          <span className="mt-0.5 inline-flex shrink-0" aria-hidden>
+            <IconLeaf
+              src={infoIcon}
+              leafW={16}
+              leafH={16}
+              frame={16}
+              colorClass="text-purple-600"
+            />
+          </span>
+          <div className="flex min-w-0 flex-1 flex-col gap-2">
+            {timing}
+            {action && (
+              <p className="text-sm leading-[18px] text-grey-700">{action}</p>
+            )}
+          </div>
+        </div>
       )}
-      <div className="flex flex-col gap-1.5 pt-1">
-        <p className="text-xs font-bold uppercase tracking-[0.08em] text-grey-400">
-          Supporting documents
-        </p>
+      <ol className="flex list-none flex-col gap-4">
+        <PermitExplainStep n={1} note={why || undefined}>
+          <span className="font-bold">{explain.what}</span>
+        </PermitExplainStep>
+        <PermitExplainStep n={2}>
+          {explain.who[role]}
+        </PermitExplainStep>
+        {other ? (
+          <PermitExplainStep n={3}>{other}</PermitExplainStep>
+        ) : null}
+      </ol>
+      <FieldSection
+        label={
+          supporting.docs.length > 0
+            ? `Supporting documents · ${supporting.docs.length}`
+            : "Supporting documents"
+        }
+      >
         {supporting.unmatched && (
           <p className="text-sm leading-[18px] text-grey-700">
             {supporting.unmatched}
@@ -1219,29 +2034,29 @@ function PermitExplainBody({
             {EMPTY_SUPPORTING_DOCS}
           </p>
         ) : (
-          <ul className="flex flex-col overflow-hidden rounded-[var(--radius-md)] border border-grey-100 bg-white">
+          <ol className="flex list-none flex-col gap-2 text-sm leading-[18px] text-black">
             {supporting.docs.map((doc) => (
-              <li
-                key={doc.name}
-                className="flex flex-col gap-0.5 border-t border-grey-100 px-3 py-2 first:border-t-0"
-              >
-                <p className="text-sm leading-[18px] font-bold text-black">
-                  {doc.name}
-                </p>
-                <p className="text-[11px] leading-[14px] text-grey-600">
-                  {needLabel(doc.need)} · {supplierLine(doc.supplier, role)}
-                </p>
+              <li key={doc.name} className="flex items-center gap-1.5">
+                <span className="font-bold">{doc.name}</span>
+                <span className="inline-flex shrink-0" aria-hidden>
+                  <IconLeaf
+                    src={dotIcon}
+                    leafW={5.33}
+                    leafH={5.33}
+                    frame={16}
+                  />
+                </span>
+                <span className="text-grey-600">
+                  {needLabelCompact(doc.need)}
+                </span>
               </li>
             ))}
-          </ul>
+          </ol>
         )}
-      </div>
+      </FieldSection>
       {samples.length > 0 && (
-        <div className="flex flex-col gap-1.5 pt-1">
-          <p className="text-xs font-bold uppercase tracking-[0.08em] text-grey-400">
-            Samples
-          </p>
-          <ul className="overflow-hidden rounded-[var(--radius-md)] border border-grey-100 bg-grey-25">
+        <FieldSection label="Samples">
+          <ul className="overflow-hidden rounded-[var(--radius-md)] border border-grey-200 bg-white">
             {samples.map((doc) => (
               <DocFileRow
                 key={doc.id}
@@ -1253,32 +2068,62 @@ function PermitExplainBody({
               />
             ))}
           </ul>
-        </div>
+        </FieldSection>
       )}
     </div>
   );
 }
 
+type OverlayDrillPage = {
+  title: string;
+  badge?: string;
+  badgeHint?: string;
+  body: ReactNode;
+};
+
+const OverlayDrillContext = createContext<{
+  push: (page: OverlayDrillPage) => void;
+} | null>(null);
+
 function PermitDetailOverlay({
   open,
   title,
   titleId,
+  subtitle,
   badge,
+  badgeHint,
+  footer,
   onClose,
   children,
 }: {
   open: boolean;
   title: string;
   titleId: string;
+  subtitle?: string;
   badge?: string;
+  badgeHint?: string;
+  footer?: ReactNode;
   onClose: () => void;
   children: ReactNode;
 }) {
   const desktop = useDesktopViewport();
+  const subId = useId();
+  const [drill, setDrill] = useState<OverlayDrillPage | null>(null);
+  const shownTitle = drill?.title ?? title;
+  const shownSubtitle = drill ? undefined : subtitle;
+  const shownBadge = drill ? drill.badge : badge;
+  const shownHint = drill ? drill.badgeHint : badgeHint;
+
+  useEffect(() => {
+    if (!open) setDrill(null);
+  }, [open]);
+
   useEffect(() => {
     if (!open) return;
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
+      if (e.key !== "Escape") return;
+      if (drill) setDrill(null);
+      else onClose();
     };
     window.addEventListener("keydown", onKey);
     const prev = document.body.style.overflow;
@@ -1287,58 +2132,81 @@ function PermitDetailOverlay({
       window.removeEventListener("keydown", onKey);
       document.body.style.overflow = prev;
     };
-  }, [open, onClose]);
+  }, [open, onClose, drill]);
   if (!open) return null;
   return (
-    <div
-      className={cn(
-        "fixed inset-0 z-50 flex",
-        desktop ? "items-center justify-center p-8" : "items-end",
-      )}
-    >
-      <button
-        type="button"
-        aria-label={`Close ${title}`}
-        className="absolute inset-0 bg-[rgba(18,18,18,0.4)]"
-        onClick={onClose}
-      />
-      <aside
-        role="dialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
+    <OverlayDrillContext.Provider value={{ push: setDrill }}>
+      <div
         className={cn(
-          "relative flex w-full flex-col bg-white shadow-[var(--shadow-light-bg)]",
-          desktop
-            ? "max-h-[80vh] max-w-xl rounded-[var(--radius-2xl)]"
-            : "max-h-[90vh] rounded-t-[var(--radius-2xl)] border-t border-grey-100",
+          "fixed inset-0 z-50 flex",
+          desktop ? "items-center justify-center p-8" : "items-end",
         )}
       >
-        <header className="flex items-start justify-between gap-3 border-b border-grey-75 px-4 py-4 tablet:px-5">
-          <div className="min-w-0">
-            <div className="flex flex-wrap items-center gap-2">
-              <h2
-                id={titleId}
-                className="text-lg leading-[22px] font-bold text-black"
-              >
-                {title}
-              </h2>
-              {badge && <span className={CHIP_MAY_APPLY}>{badge}</span>}
+        <button
+          type="button"
+          aria-label={`Close ${shownTitle}`}
+          className="absolute inset-0 bg-[rgba(18,18,18,0.4)]"
+          onClick={onClose}
+        />
+        <aside
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          aria-describedby={shownSubtitle ? subId : undefined}
+          className={cn(
+            "relative flex w-full flex-col bg-white shadow-[var(--shadow-light-bg)]",
+            desktop
+              ? "max-h-[80vh] max-w-xl rounded-[var(--radius-2xl)]"
+              : "max-h-[90vh] rounded-t-[var(--radius-2xl)] border-t border-grey-100",
+          )}
+        >
+          <header className="flex items-start justify-between gap-2 border-b border-grey-75 px-4 py-4 tablet:px-5">
+            <div className="min-w-0 flex-1">
+              <div className="flex flex-wrap items-center gap-2">
+                <h2
+                  id={titleId}
+                  className="text-lg leading-[22px] font-bold text-black"
+                >
+                  {shownTitle}
+                </h2>
+                {shownBadge && (
+                  <MayApplyChip
+                    label={shownBadge}
+                    hint={shownHint ?? quizCopy.possibleChipHint}
+                  />
+                )}
+              </div>
+              {shownSubtitle ? (
+                <p
+                  id={subId}
+                  className="mt-1 text-sm leading-[18px] font-normal text-grey-600"
+                >
+                  {shownSubtitle}
+                </p>
+              ) : null}
             </div>
+            <OverlayIconBtn label="Close" onClick={onClose}>
+              <OverlayCloseGlyph />
+            </OverlayIconBtn>
+          </header>
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 tablet:px-5">
+            {drill ? (
+              <div className="flex flex-col items-start gap-4">
+                <OverlayBackBtn onClick={() => setDrill(null)} />
+                {drill.body}
+              </div>
+            ) : (
+              children
+            )}
           </div>
-          <button
-            type="button"
-            aria-label="Close"
-            onClick={onClose}
-            className="grid size-10 shrink-0 place-items-center rounded-[var(--radius-sm)] text-black hover:bg-grey-50 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]"
-          >
-            <IconLeaf src={closeIcon} leafW={12} leafH={12} frame={16} />
-          </button>
-        </header>
-        <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4 tablet:px-5">
-          {children}
-        </div>
-      </aside>
-    </div>
+          {footer && !drill ? (
+            <footer className="border-t border-grey-75 px-4 py-3 tablet:px-5">
+              {footer}
+            </footer>
+          ) : null}
+        </aside>
+      </div>
+    </OverlayDrillContext.Provider>
   );
 }
 
@@ -1368,14 +2236,42 @@ function PermitPackRow({
   const title = cardTitle(role, stageName, member.step.name);
   const explain = permitExplainFor(member.step.name) ?? permitExplainFor(title);
   const titleId = useId();
+  const drill = useContext(OverlayDrillContext);
   const [open, setOpen] = useState(false);
   useEffect(() => {
-    if (highlighted) setOpen(true);
-  }, [highlighted]);
+    if (highlighted && !drill) setOpen(true);
+  }, [highlighted, drill]);
   const what = stepWhat(member.step, role);
   const timingRow = timing ? (
     <WhenChip duration={timing.duration} kind={timing.kind} />
   ) : null;
+  const explainBody = (
+    <PermitExplainBody
+      name={member.step.name}
+      unit={unit}
+      role={role}
+      stageName={stageName}
+      stepName={member.step.name}
+      highlightedDocId={highlightDocId}
+      onPreview={onPreview}
+      action={what}
+      timing={timingRow}
+    />
+  );
+  const openDetail = () => {
+    if (drill) {
+      drill.push({
+        title,
+        badge: possible ? possibleLabel : undefined,
+        badgeHint: possible
+          ? possibleChipHint(quizEditMode(role))
+          : undefined,
+        body: explainBody,
+      });
+      return;
+    }
+    setOpen(true);
+  };
   return (
     <li
       id={stepDomId(stageName, member.step.name)}
@@ -1389,19 +2285,25 @@ function PermitPackRow({
           type="button"
           aria-haspopup="dialog"
           aria-expanded={open}
-          onClick={() => setOpen(true)}
+          onClick={openDetail}
           className="flex w-full items-center gap-2 px-3 py-2.5 text-left hover:bg-grey-50 focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--color-purple-600)]"
         >
           <span className="min-w-0 flex-1 text-sm leading-[18px] font-bold text-black">
             {title}
           </span>
-          {possible && <span className={CHIP_MAY_APPLY}>{possibleLabel}</span>}
+          {possible && (
+            <MayApplyChip
+              label={possibleLabel}
+              hint={possibleChipHint(quizEditMode(role))}
+            />
+          )}
           <span className="inline-flex shrink-0 text-grey-500" aria-hidden>
             <IconLeaf
-              src={chevronRight}
-              leafW={12}
-              leafH={10}
+              src={caretDown}
+              leafW={10}
+              leafH={5.83}
               frame={16}
+              rotate={-90}
               colorClass="text-grey-500"
             />
           </span>
@@ -1411,30 +2313,26 @@ function PermitPackRow({
           <p className="min-w-0 flex-1 text-sm leading-[18px] font-bold text-black">
             {title}
           </p>
-          {possible && <span className={CHIP_MAY_APPLY}>{possibleLabel}</span>}
+          {possible && (
+            <MayApplyChip
+              label={possibleLabel}
+              hint={possibleChipHint(quizEditMode(role))}
+            />
+          )}
         </div>
       )}
-      {explain && (
+      {explain && !drill && (
         <PermitDetailOverlay
           open={open}
           title={title}
           titleId={titleId}
           badge={possible ? possibleLabel : undefined}
+          badgeHint={
+            possible ? possibleChipHint(quizEditMode(role)) : undefined
+          }
           onClose={() => setOpen(false)}
         >
-          <div className="flex flex-col gap-2">
-            {timingRow}
-            <p className="text-sm leading-[18px] text-grey-600">{what}</p>
-            <PermitExplainBody
-              name={member.step.name}
-              unit={unit}
-              role={role}
-              stageName={stageName}
-              stepName={member.step.name}
-              highlightedDocId={highlightDocId}
-              onPreview={onPreview}
-            />
-          </div>
+          {explainBody}
         </PermitDetailOverlay>
       )}
     </li>
@@ -1460,7 +2358,26 @@ function PermitNameRow({
 }) {
   const explain = permitExplainFor(name);
   const titleId = useId();
+  const drill = useContext(OverlayDrillContext);
   const [open, setOpen] = useState(false);
+  const explainBody = (
+    <PermitExplainBody
+      name={name}
+      unit={unit}
+      role={role}
+      stageName={stageName}
+      stepName={name}
+      highlightedDocId={highlightedDocId}
+      onPreview={onPreview}
+    />
+  );
+  const openDetail = () => {
+    if (drill) {
+      drill.push({ title: name, body: explainBody });
+      return;
+    }
+    setOpen(true);
+  };
   return (
     <li className="border-t border-grey-100 first:border-t-0">
       {explain ? (
@@ -1468,23 +2385,24 @@ function PermitNameRow({
           type="button"
           aria-haspopup="dialog"
           aria-expanded={open}
-          onClick={() => setOpen(true)}
+          onClick={openDetail}
           className="flex w-full min-w-0 items-center gap-2 px-3 py-2.5 text-left hover:bg-grey-50 focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--color-purple-600)]"
         >
           <span className="min-w-0 flex-1 text-sm leading-[18px] font-bold text-black">
             {name}
           </span>
           {badge && (
-            <span className="inline-flex h-[18px] shrink-0 items-center rounded-[var(--radius-sm)] border border-grey-200 px-1.5 text-[11px] leading-[14px] font-bold text-grey-700">
+            <span className="inline-flex h-6 shrink-0 items-center rounded-[var(--radius-sm)] border border-grey-200 px-1.5 text-xs leading-4 font-bold text-grey-700">
               {badge}
             </span>
           )}
           <span className="inline-flex shrink-0 text-grey-500" aria-hidden>
             <IconLeaf
-              src={chevronRight}
-              leafW={12}
-              leafH={10}
+              src={caretDown}
+              leafW={10}
+              leafH={5.83}
               frame={16}
+              rotate={-90}
               colorClass="text-grey-500"
             />
           </span>
@@ -1495,28 +2413,20 @@ function PermitNameRow({
             {name}
           </span>
           {badge && (
-            <span className="inline-flex h-[18px] shrink-0 items-center rounded-[var(--radius-sm)] border border-grey-200 px-1.5 text-[11px] leading-[14px] font-bold text-grey-700">
+            <span className="inline-flex h-6 shrink-0 items-center rounded-[var(--radius-sm)] border border-grey-200 px-1.5 text-xs leading-4 font-bold text-grey-700">
               {badge}
             </span>
           )}
         </div>
       )}
-      {explain && (
+      {explain && !drill && (
         <PermitDetailOverlay
           open={open}
           title={name}
           titleId={titleId}
           onClose={() => setOpen(false)}
         >
-          <PermitExplainBody
-            name={name}
-            unit={unit}
-            role={role}
-            stageName={stageName}
-            stepName={name}
-            highlightedDocId={highlightedDocId}
-            onPreview={onPreview}
-          />
+          {explainBody}
         </PermitDetailOverlay>
       )}
     </li>
@@ -1582,6 +2492,111 @@ function PermitList({
   );
 }
 
+function ScreenerCta({
+  role,
+  className,
+}: {
+  role: Role;
+  className?: string;
+}) {
+  const label =
+    role === "contractor"
+      ? quizCopy.screenerCtaContractor
+      : role === "tenant"
+        ? quizCopy.screenerCtaTenant
+        : quizCopy.screenerCtaOfficer;
+  return (
+    <Link
+      to="/screener/drafts"
+      className={cn(
+        "inline-flex w-fit shrink-0 items-center justify-center text-sm leading-[18px] font-bold focus-visible:outline-none",
+        "h-8 rounded-[var(--radius-sm)] border border-purple-600 bg-white px-3 text-purple-600 hover:bg-purple-100 focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]",
+        className,
+      )}
+    >
+      {label}
+    </Link>
+  );
+}
+
+function ScreenerPrepBanner() {
+  const tipId = useId();
+  const rootRef = useRef<HTMLDivElement>(null);
+  const mobile = useMobileViewport();
+  const [tipOn, setTipOn] = useState(false);
+
+  useEffect(() => {
+    if (!tipOn) return;
+    const onDoc = (e: PointerEvent) => {
+      if (!rootRef.current?.contains(e.target as Node)) setTipOn(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") setTipOn(false);
+    };
+    window.addEventListener("pointerdown", onDoc);
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("pointerdown", onDoc);
+      window.removeEventListener("keydown", onKey);
+    };
+  }, [tipOn]);
+
+  return (
+    <div
+      ref={rootRef}
+      role="status"
+      className="flex flex-col gap-3 rounded-[var(--radius-md)] border border-purple-200 bg-purple-100 px-3 py-3"
+    >
+      <div className="flex min-w-0 flex-1 items-start gap-2">
+        <button
+          type="button"
+          aria-label="What this step is for"
+          aria-expanded={tipOn}
+          aria-describedby={tipOn ? tipId : undefined}
+          onClick={() => {
+            if (mobile) setTipOn((on) => !on);
+          }}
+          onMouseEnter={() => {
+            if (!mobile) setTipOn(true);
+          }}
+          onMouseLeave={() => {
+            if (!mobile) setTipOn(false);
+          }}
+          onFocus={() => {
+            if (!mobile) setTipOn(true);
+          }}
+          onBlur={() => {
+            if (!mobile) setTipOn(false);
+          }}
+          className="relative mt-0.5 inline-flex shrink-0 appearance-none bg-transparent p-0 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]"
+        >
+          <span aria-hidden className="inline-flex shrink-0">
+            <IconLeaf
+              src={infoIcon}
+              leafW={16}
+              leafH={16}
+              frame={16}
+              colorClass="text-purple-600"
+            />
+          </span>
+          <DlsTooltip id={tipId} open={tipOn}>
+            {quizCopy.screenerTipContractor}
+          </DlsTooltip>
+        </button>
+        <div className="flex min-w-0 flex-1 flex-col gap-0.5">
+          <p className="text-sm leading-[18px] font-bold text-grey-700">
+            {quizCopy.screenerBannerTitle}
+          </p>
+          <p className="text-sm leading-[18px] font-normal text-grey-600">
+            {quizCopy.screenerBannerSub}
+          </p>
+        </div>
+      </div>
+      <ScreenerCta role="contractor" className="w-full" />
+    </div>
+  );
+}
+
 function GuideCta({
   children,
   onClick,
@@ -1626,9 +2641,12 @@ function OfficerQuizActions({
 }) {
   if (confirmed) {
     return (
-      <GuideCta className="w-full tablet:w-fit" onClick={onEdit}>
-        {quizCopy.officerUpdateCta}
-      </GuideCta>
+      <div className="flex flex-col gap-2 tablet:flex-row tablet:flex-wrap tablet:items-center">
+        <GuideCta className="w-full tablet:w-fit" onClick={onEdit}>
+          {quizCopy.officerUpdateCta}
+        </GuideCta>
+        <ScreenerCta role="officer" className="w-full tablet:w-fit" />
+      </div>
     );
   }
   return (
@@ -1640,6 +2658,38 @@ function OfficerQuizActions({
         {quizCopy.officerEditCta}
       </GuideCta>
     </div>
+  );
+}
+
+function OfficerConfirmBanner({
+  title,
+  confirmed,
+  children,
+  onConfirm,
+  onEdit,
+}: {
+  title: string;
+  confirmed: boolean;
+  children: ReactNode;
+  onConfirm: () => void;
+  onEdit: () => void;
+}) {
+  const actions = (
+    <OfficerQuizActions
+      confirmed={confirmed}
+      onConfirm={onConfirm}
+      onEdit={onEdit}
+    />
+  );
+  return (
+    <Banner
+      tone={confirmed ? "quiet" : "start"}
+      fold
+      footer={actions}
+      body={<div className="flex w-full flex-col gap-4">{children}</div>}
+    >
+      {title}
+    </Banner>
   );
 }
 
@@ -1664,7 +2714,7 @@ function CheckRow({
         onToggle();
       }}
       className={cn(
-        "flex w-full cursor-pointer items-center gap-3 px-3 py-2.5 text-left",
+        "flex w-full cursor-pointer items-center gap-3 px-3 py-4 text-left",
         "border-t border-grey-100 first:border-t-0",
         on && "bg-purple-100",
         exclusive && "bg-grey-25",
@@ -1694,15 +2744,42 @@ function CheckRow({
   );
 }
 
+function reviewDetailBits(detail: string) {
+  return detail
+    .split(/\s*;\s*/)
+    .map((bit) => bit.trim())
+    .filter(Boolean);
+}
+
 function QuizReviewLines({ row }: { row: QuizReviewRow }) {
   const open = row.flag === "not-sure" || row.flag === "unanswered";
+  const bits = reviewDetailBits(row.detail);
   return (
-    <div className="grid min-w-0 grid-cols-1 items-baseline gap-y-0.5 tablet:grid-cols-[minmax(7.5rem,38%)_1fr] tablet:gap-x-4">
-      <p className="text-sm leading-[18px] text-grey-800">{row.topic}</p>
+    <div className="flex min-w-0 flex-col gap-2">
+      <p className="text-xs leading-4 font-bold uppercase tracking-[0.08em] text-grey-600">
+        {row.topic}
+      </p>
       {open ? (
-        <p className="text-sm leading-[18px] italic text-grey-800">
+        <span
+          className="inline-flex h-6 w-fit max-w-full shrink-0 items-center rounded-[var(--radius-sm)] bg-warning-200 px-2 text-xs leading-4 font-bold text-warning-800"
+        >
           {row.detail}
-        </p>
+        </span>
+      ) : row.flag === "none" ? (
+        <span className="inline-flex h-[18px] w-fit shrink-0 items-center rounded-[var(--radius-sm)] border border-grey-200 bg-grey-100 px-1.5 text-[11px] leading-[14px] font-bold text-grey-700">
+          {row.detail}
+        </span>
+      ) : bits.length > 1 ? (
+        <ul className="flex flex-col gap-1.5">
+          {bits.map((bit) => (
+            <li key={bit} className="flex items-start gap-1.5">
+              <span className="mt-0.5 shrink-0" aria-hidden>
+                <IconLeaf src={dotIcon} leafW={5.33} leafH={5.33} frame={16} />
+              </span>
+              <p className="min-w-0 text-sm leading-[18px] text-black">{bit}</p>
+            </li>
+          ))}
+        </ul>
       ) : (
         <p className="min-w-0 text-sm leading-[18px] font-bold break-words text-black">
           {row.detail}
@@ -1712,13 +2789,26 @@ function QuizReviewLines({ row }: { row: QuizReviewRow }) {
   );
 }
 
+function QuizReviewCard({
+  row,
+  children,
+}: {
+  row: QuizReviewRow;
+  children?: ReactNode;
+}) {
+  return (
+    <li className="flex w-full flex-col gap-3 rounded-[var(--radius-md)] border border-grey-100 bg-grey-50 px-3 py-3">
+      <QuizReviewLines row={row} />
+      {children}
+    </li>
+  );
+}
+
 function QuizAnswerReview({ rows }: { rows: QuizReviewRow[] }) {
   return (
-    <ul className="flex flex-col divide-y divide-grey-200">
+    <ul className="flex w-full flex-col gap-3">
       {rows.map((row) => (
-        <li key={row.questionId} className="py-3 first:pt-0 last:pb-0">
-          <QuizReviewLines row={row} />
-        </li>
+        <QuizReviewCard key={row.questionId} row={row} />
       ))}
     </ul>
   );
@@ -1764,9 +2854,11 @@ function QuizWorksLink({
             : quizCopy.linkedLeadTenant
           : quizCopy.extrasHow[role]);
   const foot = confirmed
-    ? hasExtras
-      ? permitListCaveat(role, true)
-      : quizCopy.resultsMainOnly
+    ? role === "officer"
+      ? quizCopy.officerUpdateNote
+      : hasExtras
+        ? permitListCaveat(role, true)
+        : quizCopy.resultsMainOnly
     : hasExtras
       ? permitListCaveat(role, false)
       : stillOpen
@@ -1777,37 +2869,29 @@ function QuizWorksLink({
       {extrasLead && (
         <p className="text-sm leading-[18px] text-grey-800">{extrasLead}</p>
       )}
-      <ul className="flex flex-col divide-y divide-grey-200">
-        {rows.map((row) => {
-          return (
-            <li
-              key={row.questionId}
-              className="flex flex-col gap-2 py-3 first:pt-0 last:pb-0"
-            >
-              <QuizReviewLines row={row} />
-              {row.permits.length > 0 && (
-                <ul className="overflow-hidden rounded-[var(--radius-md)] border border-grey-100 bg-white">
-                  {row.permits.map((name) => (
-                    <PermitNameRow
-                      key={name}
-                      name={name}
-                      unit={unit}
-                      role={role}
-                      stageName={stageName}
-                      highlightedDocId={highlightedDocId}
-                      onPreview={onPreview}
-                      badge={extraBadge}
-                    />
-                  ))}
-                </ul>
-              )}
-            </li>
-          );
-        })}
+      <ul className="flex flex-col gap-3">
+        {rows.map((row) => (
+          <QuizReviewCard key={row.questionId} row={row}>
+            {row.permits.length > 0 ? (
+              <ul className="overflow-hidden rounded-[var(--radius-md)] border border-grey-100 bg-white">
+                {row.permits.map((name) => (
+                  <PermitNameRow
+                    key={name}
+                    name={name}
+                    unit={unit}
+                    role={role}
+                    stageName={stageName}
+                    highlightedDocId={highlightedDocId}
+                    onPreview={onPreview}
+                    badge={extraBadge}
+                  />
+                ))}
+              </ul>
+            ) : null}
+          </QuizReviewCard>
+        ))}
       </ul>
-      {foot && (
-        <p className="text-sm leading-[18px] text-grey-800">{foot}</p>
-      )}
+      {foot && <GuideNote>{foot}</GuideNote>}
       {Children.toArray(actions).length > 0 && (
         <div className="border-t border-grey-200 pt-4">{actions}</div>
       )}
@@ -1819,18 +2903,20 @@ function PlannedWorksForm({
   questions,
   state,
   onToggle,
+  allowUnsure = true,
 }: {
   questions: QuizQuestion[];
   state: QuizState;
   onToggle: (questionId: QuestionId, optionId: string) => void;
+  allowUnsure?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-4">
       {questions.map((question) => {
         const answer = state.answers?.[question.id] ?? { kind: "unanswered" };
         return (
-          <div key={question.id} className="flex flex-col gap-2">
-            <p className="text-sm leading-[18px] font-bold text-black">
+          <div key={question.id} className="flex flex-col gap-3">
+            <p className="text-base leading-5 font-bold text-black">
               {question.prompt}
             </p>
             <div className="flex flex-col overflow-hidden rounded-[var(--radius-md)] border border-grey-200 bg-white">
@@ -1848,22 +2934,20 @@ function PlannedWorksForm({
                 on={isOptionOn(answer, NONE_ID)}
                 onToggle={() => onToggle(question.id, NONE_ID)}
               />
-              <CheckRow
-                label="Not sure yet"
-                exclusive
-                on={isOptionOn(answer, NOT_SURE_ID)}
-                onToggle={() => onToggle(question.id, NOT_SURE_ID)}
-              />
+              {allowUnsure && (
+                <CheckRow
+                  label="Not sure yet"
+                  exclusive
+                  on={isOptionOn(answer, NOT_SURE_ID)}
+                  onToggle={() => onToggle(question.id, NOT_SURE_ID)}
+                />
+              )}
             </div>
           </div>
         );
       })}
     </div>
   );
-}
-
-function escapeRegExp(value: string) {
-  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 }
 
 /** Existing copy names that already point at a pack system. */
@@ -1942,148 +3026,6 @@ function systemNamedIn(text: string, label: string): boolean {
   );
 }
 
-function searchVerbForDoc(doc: DocItem): SearchVerb {
-  if (doc.externalUrl) return "Open";
-  return verbForDoc(doc) === "Read" ? "Read" : "Download";
-}
-
-type QuizSearchBits = {
-  kickoffSoon: boolean;
-  state: QuizState;
-  questions: QuizQuestion[];
-  summary: string[];
-  flags: Record<PlannedWorkSlug, SlugFlag> | null;
-  permitResult: QuizPermitResult | null;
-};
-
-function cardSearchSurface(
-  classified: ClassifiedStep,
-  stageName: string,
-  phaseId: Phase["id"],
-  role: Role,
-  unit: Unit,
-  quiz: QuizSearchBits | null,
-): CardSearchSurface {
-  const { step, mine, others } = classified;
-  const notes = notesYouFollow(mine, others, role);
-  const purpose = stepWhat(step, role);
-  const handoffOnly = mine.length === 0;
-  const { sequential, parallel, nested } = groupGuideBlocks(notes);
-  const lineOf = (s: (typeof notes)[number]) => displayText(s, true, role);
-  const howLines = handoffOnly
-    ? []
-    : [...sequential, ...parallel]
-        .map((s) => lineOf(s))
-        .filter((line): line is string => Boolean(line));
-  const onlyIf = (handoffOnly ? notes : nested)
-    .map((s) => ({
-      workIf: s.workIf ?? "",
-      line: lineOf(s),
-    }))
-    .filter((row): row is { workIf: string; line: string } => Boolean(row.line));
-
-  const docs = docsForStep(
-    step.name,
-    unit.tenancyType,
-    unit.terminal,
-    unit.zone,
-    stageName,
-  );
-  const hostsQuiz = Boolean(quiz) && step.name === QUIZ_STEP_NAME;
-  const quizStatus = quiz?.state.status ?? "idle";
-
-  const copy = lifeSgCard(role, stageName, step.name);
-  const lead = cardLead(role, stageName, step.name);
-  const rawSubheader = copy?.subheader ?? purpose;
-  const subheaderLines = Array.isArray(rawSubheader)
-    ? rawSubheader
-    : rawSubheader
-      ? [rawSubheader]
-      : [];
-  const subheader = subheaderLines.join(" ");
-  const remainingHow = copy ? (copy.how ?? []) : howLines;
-  const whenRows = timingsForStep(stageName, step.name, unit, role);
-  const showOnlyIf = onlyIf.length > 0 && !copy?.hideOnlyIf;
-  const packSystems = mergeSystems(
-    packSystemsNamedIn(subheader, role),
-    ...remainingHow.map((line) => packSystemsNamedIn(line, role)),
-    ...(showOnlyIf
-      ? onlyIf.map((row) => packSystemsNamedIn(row.line, role))
-      : []),
-  );
-  const { guides, samples } = splitStepDocs(docs);
-  const hostsKickoff =
-    stageName === KICKOFF_STAGE_NAME && step.name === KICKOFF_STEP_NAME;
-  const showKickoffCorrection =
-    Boolean(quiz) && quizStatus === "done" && hostsKickoff;
-  const certainty = stepCertainty(step, quiz?.flags ?? null);
-
-  const bullets = [
-    ...(lead ? [lead] : []),
-    ...subheaderLines,
-    ...whenRows.flatMap((row) =>
-      [row.duration, row.workIf].filter((v): v is string => Boolean(v)),
-    ),
-    ...remainingHow,
-    ...(showOnlyIf
-      ? onlyIf.flatMap((row) => [row.workIf, row.line].filter(Boolean))
-      : []),
-    ...(hostsQuiz && quizStatus === "editing"
-      ? (quiz?.questions.flatMap((q) => [
-          q.prompt,
-          ...q.options.map((o) => o.label),
-          "None of these",
-          "Not sure yet",
-        ]) ?? [])
-      : []),
-    ...(hostsQuiz && quiz && quizHasSavedAnswers(quiz.state)
-      ? quizReviewRows(quiz.state, unit).flatMap((row) => [
-          row.prompt,
-          row.detail,
-          ...row.permits,
-        ])
-      : []),
-    ...(showKickoffCorrection && quiz
-      ? quizReviewRows(quiz.state, unit).flatMap((row) => [
-          row.prompt,
-          row.detail,
-          ...row.permits,
-        ])
-      : []),
-    ...(showKickoffCorrection ? quizCopy.kickoffCorrection : []),
-    ...((hostsQuiz || hostsKickoff) && quiz?.permitResult
-      ? [
-          quizCopy.resultsLabel,
-          quiz.permitResult.main,
-          ...quiz.permitResult.extras,
-          quiz.permitResult.extras.length > 0
-            ? quizCopy.resultsExtrasLabel
-            : unansweredReviewCount(quizReviewRows(quiz.state, unit)) === 0
-              ? quizCopy.resultsMainOnly
-              : "",
-          quiz.permitResult.caveat,
-        ]
-      : []),
-    ...(!hostsQuiz && certainty === "possible"
-      ? [possibleChip(quizEditMode(role)), possibleCopy(quizEditMode(role))]
-      : []),
-  ];
-
-  return {
-    phaseId,
-    stageName,
-    stepName: step.name,
-    displayTitle: cardTitle(role, stageName, step.name),
-    bullets,
-    docs: [...guides, ...samples].map((doc) => ({
-      id: doc.id,
-      name: doc.name,
-      verb: searchVerbForDoc(doc),
-    })),
-    systems: packSystems.map((s) => s.label),
-  };
-}
-
 function fileRowDomId(stageName: string, stepName: string, docId: string) {
   return `file-${stepDomId(stageName, stepName)}-${docId}`;
 }
@@ -2129,213 +3071,6 @@ function blocksForPhase(
   return injectPlannedWorksQuiz(blocks, role, showQuiz);
 }
 
-type SearchHighlight = {
-  stepKey: string;
-  docId: string | null;
-  systemLabel: string | null;
-};
-
-function SearchGlyph({ size = 16 }: { size?: number }) {
-  return (
-    <svg
-      width={size}
-      height={size}
-      viewBox="0 0 16 16"
-      fill="none"
-      aria-hidden
-      className="shrink-0"
-    >
-      <circle cx="7" cy="7" r="5" stroke="#999999" strokeWidth="1.67" />
-      <path
-        d="M11 11l3.5 3.5"
-        stroke="#999999"
-        strokeWidth="1.67"
-        strokeLinecap="round"
-      />
-    </svg>
-  );
-}
-
-function Highlighted({ text, query }: { text: string; query: string }) {
-  const needles = matchNeedles(query);
-  if (needles.length === 0) return <>{text}</>;
-  const re = new RegExp(
-    `(${needles.map((n) => escapeRegExp(n)).join("|")})`,
-    "gi",
-  );
-  const parts = text.split(re);
-  return (
-    <>
-      {parts.map((part, i) => {
-        const hit = needles.some(
-          (n) => n.toLowerCase() === part.toLowerCase(),
-        );
-        if (!hit) return <span key={i}>{part}</span>;
-        return (
-          <mark
-            key={i}
-            className="rounded-[2px] bg-purple-100 text-inherit"
-          >
-            {part}
-          </mark>
-        );
-      })}
-    </>
-  );
-}
-
-function ChipRow({
-  rows,
-  disabled,
-  align = "start",
-  onChip,
-}: {
-  rows: { chip: string; hit: SearchHit }[];
-  disabled?: boolean;
-  align?: "start" | "center";
-  onChip: (chip: string) => void;
-}) {
-  if (rows.length === 0) return null;
-  return (
-    <div
-      aria-label="Quick links"
-      className={cn(
-        "process-chip-scroll -mx-1 flex flex-nowrap gap-2 overflow-x-auto px-1 tablet:mx-0 tablet:flex-wrap tablet:overflow-visible tablet:px-0",
-        align === "center" && "tablet:justify-center",
-      )}
-    >
-      {rows.map(({ chip, hit }) => (
-        <button
-          key={chip}
-          type="button"
-          disabled={disabled}
-          aria-label={`Go to ${hit.displayTitle}`}
-          title={hit.displayTitle}
-          onClick={() => onChip(chip)}
-          className="inline-flex h-8 shrink-0 items-center rounded-full border border-grey-200 bg-white px-3 text-sm leading-[18px] whitespace-nowrap text-grey-700 hover:border-purple-600 hover:bg-purple-100 hover:text-purple-700 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)] disabled:opacity-60"
-        >
-          {chip}
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function GuideSearch({
-  query,
-  hits,
-  disabled,
-  overlayOpen,
-  size = "bar",
-  onQuery,
-  onClear,
-  onJump,
-  onOpenOverlay,
-}: {
-  query: string;
-  hits: SearchHit[];
-  disabled?: boolean;
-  overlayOpen: boolean;
-  size?: "hero" | "bar" | "toolbar";
-  onQuery: (value: string) => void;
-  onClear: () => void;
-  onJump: (hit: SearchHit) => void;
-  onOpenOverlay: () => void;
-}) {
-  const active = normalizeQuery(query);
-  const showPanel = overlayOpen && !disabled && Boolean(active);
-  const hero = size === "hero";
-  const toolbar = size === "toolbar";
-  return (
-    <div className="relative flex min-w-0 w-full flex-col">
-      <form
-        role="search"
-        onSubmit={(e) => e.preventDefault()}
-        className="relative"
-      >
-        <label className="sr-only" htmlFor="process-v19-search">
-          Find a step, form, or system
-        </label>
-        <span
-          className={cn(
-            "pointer-events-none absolute top-1/2 -translate-y-1/2",
-            hero ? "left-5" : toolbar ? "left-3" : "left-3.5",
-          )}
-        >
-          <SearchGlyph size={hero ? 20 : toolbar ? 24 : 16} />
-        </span>
-        <input
-          id="process-v19-search"
-          type="search"
-          autoComplete="off"
-          disabled={disabled}
-          placeholder="Find a step, form, or system."
-          value={query}
-          onChange={(e) => onQuery(e.target.value)}
-          onFocus={() => {
-            if (active) onOpenOverlay();
-          }}
-          className={cn(
-            "w-full appearance-none border border-grey-200 bg-white text-black placeholder:text-grey-300 disabled:bg-grey-50 disabled:text-grey-300 [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden",
-            hero
-              ? "h-14 rounded-[var(--radius-md)] py-3 pr-12 pl-14 text-base leading-5 shadow-[0px_1px_2px_rgba(18,18,18,0.05)] tablet:h-16"
-              : toolbar
-                ? "h-12 rounded-[var(--radius-md)] py-3 pr-12 pl-12 text-base leading-5"
-                : "h-10 rounded-[var(--radius-md)] py-2.5 pr-10 pl-10 text-sm leading-[18px] shadow-[0px_1px_2px_rgba(18,18,18,0.05)]",
-          )}
-        />
-        {query.length > 0 && (
-          <button
-            type="button"
-            onClick={onClear}
-            className={cn(
-              "absolute top-1/2 -translate-y-1/2 grid place-items-center rounded-[var(--radius-sm)] hover:bg-grey-50 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]",
-              hero || toolbar ? "right-3 size-8" : "right-2 size-7",
-            )}
-            aria-label="Clear search"
-          >
-            <IconLeaf src={closeIcon} leafW={12} leafH={12} frame={16} />
-          </button>
-        )}
-      </form>
-      {showPanel && (
-        <div
-          id="process-v19-search-overlay"
-          className="absolute inset-x-0 top-full z-40 mt-2 max-h-[min(48vh,400px)] overflow-y-auto rounded-[var(--radius-xl)] border border-grey-100 bg-white shadow-[var(--shadow-light-bg)]"
-        >
-          {hits.length === 0 ? (
-            <div className="flex flex-col gap-3 px-4 py-3">
-              <p className="text-sm leading-[18px] text-grey-500">
-                {`Nothing matching “${query.trim()}”`}
-              </p>
-            </div>
-          ) : (
-            <ul>
-              {hits.map((hit) => (
-                <li key={hit.id} className="border-t border-grey-100 first:border-t-0">
-                  <button
-                    type="button"
-                    onClick={() => onJump(hit)}
-                    className="group flex w-full flex-col gap-0.5 px-4 py-2.5 text-left hover:bg-grey-50 focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--color-purple-600)] tablet:flex-row tablet:items-baseline tablet:gap-2"
-                  >
-                    <span className="min-w-0 truncate text-sm leading-[18px] font-bold text-black group-hover:text-purple-700">
-                      <Highlighted text={hit.displayTitle} query={query} />
-                    </span>
-                    <span className="hidden text-grey-400 tablet:inline">→</span>
-                    <span className="min-w-0 truncate text-sm leading-[18px] text-grey-700 group-hover:text-purple-700">
-                      <Highlighted text={hit.target} query={query} />
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
-
 export function ProcessV19Page() {
   const {
     role,
@@ -2357,25 +3092,16 @@ export function ProcessV19Page() {
   const [jobId, setJobId] = useState(CONTRACTOR_JOBS[0].id);
   const [quiz, setQuiz] = useState<QuizState>(EMPTY_QUIZ);
   const [officerDraft, setOfficerDraft] = useState<QuizState | null>(null);
-  const [searchQuery, setSearchQuery] = useState("");
-  const [overlayOpen, setOverlayOpen] = useState(false);
-  const [searchHighlight, setSearchHighlight] =
-    useState<SearchHighlight | null>(null);
-  const [searchStuck, setSearchStuck] = useState(false);
   const [quizSheetOpen, setQuizSheetOpen] = useState(false);
-  const autoOpenedFor = useRef<string | null>(null);
+  const [officerEditGateOpen, setOfficerEditGateOpen] = useState(false);
   const isMobile = useMobileViewport();
-  const pinYouAreHere = searchStuck && isMobile;
 
   const spyLock = useRef(false);
-  const holdStuckUntilTop = useRef(false);
-  const pendingHit = useRef<SearchHit | null>(null);
   const pendingStageScroll = useRef<{
     stageName: string;
     stepName: string;
   } | null>(null);
-  const searchBarRef = useRef<HTMLDivElement | null>(null);
-  const searchSentinelRef = useRef<HTMLDivElement | null>(null);
+  const railRef = useRef<HTMLElement | null>(null);
 
   useEffect(() => {
     if (!isTenant) return;
@@ -2420,7 +3146,14 @@ export function ProcessV19Page() {
       setOfficerDraft(null);
       return;
     }
-    const saved = readQuizState(ctxUnit.id);
+    const demoMidway = params.get("demo") === "quiz-midway";
+    const demoFilled = params.get("demo") === "quiz-done";
+    const saved = demoFilled
+      ? filledDemoQuiz()
+      : demoMidway
+        ? midwayDemoQuiz()
+        : readQuizState(ctxUnit.id);
+    if (demoMidway || demoFilled) writeQuizState(ctxUnit.id, saved);
     if (
       role === "officer" &&
       saved.status === "editing" &&
@@ -2437,20 +3170,13 @@ export function ProcessV19Page() {
       setQuiz(saved);
     }
     setOfficerDraft(null);
-  }, [showQuiz, ctxUnit.id, role]);
+  }, [showQuiz, ctxUnit.id, role, params]);
 
   const selectPhase = (id: Phase["id"]) => {
     setSearchParams({ phase: id });
     window.localStorage.setItem(LS_KEY, id);
     setFocusedStep(null);
     setOverlayOpen(false);
-  };
-
-  const showLanding = () => {
-    setSearchParams({});
-    setFocusedStep(null);
-    setSearchHighlight(null);
-    pendingHit.current = null;
   };
 
   const pickOutlet = (u: Unit) => {
@@ -2465,10 +3191,13 @@ export function ProcessV19Page() {
 
   const persistQuiz = (next: QuizState) => {
     if (!quizCanWrite(role, quiz)) return;
+    const answers = completeAnswers(next.answers);
+    const empty = !quizHasSavedAnswers({ ...next, answers });
     const safe: QuizState = {
-      status: next.status,
-      answers: completeAnswers(next.answers),
-      confirmed: role === "officer" ? Boolean(next.confirmed) : false,
+      status: empty ? "idle" : next.status,
+      answers,
+      confirmed:
+        role === "officer" && !empty ? Boolean(next.confirmed) : false,
     };
     setQuiz(safe);
     writeQuizState(ctxUnit.id, safe);
@@ -2500,50 +3229,104 @@ export function ProcessV19Page() {
     [needsContext, ctxUnit],
   );
 
-  const browsingPhase = Boolean(
-    phaseFromUrl && visiblePhases.some((p) => p.id === phaseFromUrl),
-  );
-
-  useEffect(() => {
-    if (!phaseFromUrl) return;
-    if (visiblePhases.some((p) => p.id === phaseFromUrl)) return;
-    setSearchParams({}, { replace: true });
-  }, [visiblePhases, phaseFromUrl, setSearchParams]);
+  const savedPhase =
+    typeof window !== "undefined"
+      ? (window.localStorage.getItem(LS_KEY) as Phase["id"] | null)
+      : null;
 
   const active =
-    (browsingPhase
-      ? visiblePhases.find((p) => p.id === phaseFromUrl)
-      : undefined) ??
+    visiblePhases.find((p) => p.id === phaseFromUrl) ??
+    visiblePhases.find((p) => p.id === savedPhase) ??
     visiblePhases[0] ??
     PHASES[0];
 
+  const browsingPhase = true;
+
+  useEffect(() => {
+    if (phaseFromUrl === active.id) return;
+    setSearchParams({ phase: active.id }, { replace: true });
+    window.localStorage.setItem(LS_KEY, active.id);
+  }, [phaseFromUrl, active.id, setSearchParams]);
+
+  const worksProgress = quizProgress(quiz, ctxUnit);
   const showWorksSticky =
     isContractor &&
     showQuiz &&
     browsingPhase &&
     !needsContext &&
     !quizIsConfirmed(quiz);
+  const pinWorksSticky =
+    showWorksSticky && worksProgress.answered < worksProgress.total;
 
-  const worksSticky = quizStickyCopy(quiz, ctxUnit);
+  const worksSticky = quizStickyCopy(quiz, ctxUnit, role);
 
   useEffect(() => {
     const main = document.querySelector("main");
     if (!(main instanceof HTMLElement)) return;
     const stickyChrome = browsingPhase && !needsContext;
-    main.style.scrollPaddingTop = isMobile
-      ? stickyChrome
-        ? showWorksSticky
-          ? "16rem"
-          : "12rem"
-        : "3.5rem"
-      : "";
+    if (!isMobile) return;
+    main.style.scrollPaddingTop = stickyChrome
+      ? pinWorksSticky
+        ? "8rem"
+        : "5rem"
+      : "3.5rem";
     return () => {
       main.style.scrollPaddingTop = "";
     };
-  }, [browsingPhase, needsContext, isMobile, showWorksSticky]);
+  }, [browsingPhase, needsContext, isMobile, pinWorksSticky]);
+
+  useLayoutEffect(() => {
+    const el = railRef.current;
+    if (!el) return;
+    const fit = () => {
+      requestAnimationFrame(() => {
+        if (getComputedStyle(el).display === "none") {
+          el.style.height = "";
+          el.style.maxHeight = "";
+          return;
+        }
+        const top = Math.max(0, el.getBoundingClientRect().top);
+        const bottomGap = 24;
+        const viewH = window.visualViewport?.height ?? window.innerHeight;
+        const h = `${Math.max(256, viewH - top - bottomGap)}px`;
+        el.style.height = h;
+        el.style.maxHeight = h;
+      });
+    };
+    fit();
+    const scroller = el.closest("main");
+    scroller?.addEventListener("scroll", fit, { passive: true });
+    window.addEventListener("scroll", fit, { passive: true });
+    window.addEventListener("resize", fit);
+    return () => {
+      scroller?.removeEventListener("scroll", fit);
+      window.removeEventListener("scroll", fit);
+      window.removeEventListener("resize", fit);
+      el.style.height = "";
+      el.style.maxHeight = "";
+    };
+  }, [showWorksSticky, needsContext]);
+
+  const openOfficerQuizSheet = () => {
+    openOfficerDraft();
+    setOfficerEditGateOpen(false);
+    setQuizSheetOpen(true);
+  };
 
   const openQuizSheet = (edit = true) => {
+    if (role === "tenant") {
+      scrollToStep(QUIZ_STAGE_NAME, QUIZ_STEP_NAME);
+      return;
+    }
     if (role === "contractor" && !quizCanWrite(role, quiz)) return;
+    if (role === "officer") {
+      if (edit) {
+        setOfficerEditGateOpen(true);
+        return;
+      }
+      setQuizSheetOpen(true);
+      return;
+    }
     if (edit && quizCanWrite(role, quiz)) {
       persistQuiz({
         status: "editing",
@@ -2558,25 +3341,19 @@ export function ProcessV19Page() {
     if (role === "contractor" && quizCanWrite(role, quiz)) {
       persistQuiz(settleQuizWrite(quiz, ctxUnit));
     }
+    if (role === "officer") setOfficerDraft(null);
     setQuizSheetOpen(false);
   };
 
   useEffect(() => {
-    if (!isContractor) setQuizSheetOpen(false);
-  }, [isContractor]);
+    setQuizSheetOpen(false);
+    setOfficerDraft(null);
+    setOfficerEditGateOpen(false);
+  }, [role]);
 
   useEffect(() => {
-    if (!isContractor || !showQuiz || !browsingPhase) return;
-    if (quizIsConfirmed(quiz) || quizHasSavedAnswers(quiz)) return;
-    if (quiz.status !== "idle") return;
-    if (autoOpenedFor.current === ctxUnit.id) return;
-    autoOpenedFor.current = ctxUnit.id;
-    setQuizSheetOpen(true);
-  }, [isContractor, showQuiz, browsingPhase, quiz, ctxUnit.id]);
-
-  useEffect(() => {
-    if (quizIsConfirmed(quiz)) setQuizSheetOpen(false);
-  }, [quiz]);
+    if (isContractor && quizIsConfirmed(quiz)) setQuizSheetOpen(false);
+  }, [isContractor, quiz]);
 
   const quizLocked = quizIsConfirmed(quiz);
 
@@ -2613,72 +3390,6 @@ export function ProcessV19Page() {
     [showQuiz, quiz, ctxUnit],
   );
 
-  const searchCards = useMemo(() => {
-    if (needsContext) return [];
-    const bits: QuizSearchBits | null = showQuiz
-      ? {
-          kickoffSoon: Boolean(activeJob.kickoffSoon),
-          state: quiz,
-          questions: quizQuestions,
-          summary: quizSummary,
-          flags: plannedFlags,
-          permitResult,
-        }
-      : null;
-    const cards: CardSearchSurface[] = [];
-    for (const phase of visiblePhases) {
-      const blocks = blocksForPhase(
-        phase,
-        role,
-        ctxUnit,
-        showQuiz,
-        plannedFlags,
-        quizLocked,
-      );
-      for (const b of blocks) {
-        for (const classified of b.steps) {
-          cards.push(
-            cardSearchSurface(
-              classified,
-              b.stage.name,
-              phase.id,
-              role,
-              ctxUnit,
-              bits,
-            ),
-          );
-        }
-      }
-    }
-    return cards;
-  }, [
-    needsContext,
-    visiblePhases,
-    role,
-    ctxUnit,
-    showQuiz,
-    plannedFlags,
-    activeJob.kickoffSoon,
-    quiz,
-    quizQuestions,
-    quizSummary,
-    permitResult,
-    quizLocked,
-  ]);
-
-  const searchHits = useMemo(
-    () => hitsForQuery(searchCards, searchQuery),
-    [searchCards, searchQuery],
-  );
-  const usualJumps = useMemo(
-    () =>
-      QUICK_LINK_CANDIDATES.flatMap((chip) => {
-        const hit = preferredHitForQuery(searchCards, chip);
-        return hit ? [{ chip, hit }] : [];
-      }),
-    [searchCards],
-  );
-
   const navKeySig = journeyItems
     .map((s) => `${s.stageName}::${s.classified.step.name}`)
     .join("/");
@@ -2710,33 +3421,9 @@ export function ProcessV19Page() {
     setFocusedStep(stepFocusKey(stageName, stepName));
   };
 
-  const syncStuckFromScroll = () => {
-    const y = scrollYOf(nearestScroller(searchBarRef.current));
-    if (y <= 16) {
-      holdStuckUntilTop.current = false;
-      setSearchStuck(false);
-      return;
-    }
-    if (holdStuckUntilTop.current) {
-      setSearchStuck(true);
-      return;
-    }
-    const sentinel = searchSentinelRef.current;
-    if (!sentinel) return;
-    const scroller = nearestScroller(searchBarRef.current);
-    const rootRect =
-      scroller instanceof HTMLElement
-        ? scroller.getBoundingClientRect()
-        : { top: 0, bottom: window.innerHeight };
-    const s = sentinel.getBoundingClientRect();
-    const intersecting = s.bottom > rootRect.top && s.top < rootRect.bottom;
-    setSearchStuck(!intersecting);
-  };
-
   const releaseSpyLock = () => {
     window.setTimeout(() => {
       spyLock.current = false;
-      syncStuckFromScroll();
     }, 200);
   };
 
@@ -2752,69 +3439,6 @@ export function ProcessV19Page() {
     window.requestAnimationFrame(() => alignCardToRail(card, "auto"));
     releaseSpyLock();
   };
-
-  const applyHit = (hit: SearchHit) => {
-    setSearchHighlight({
-      stepKey: stepFocusKey(hit.stageName, hit.stepName),
-      docId: hit.docId ?? null,
-      systemLabel: hit.systemLabel ?? null,
-    });
-    pendingStageScroll.current = {
-      stageName: hit.stageName,
-      stepName: hit.stepName,
-    };
-    focusStep(hit.stageName, hit.stepName);
-    const el = document.getElementById(stepDomId(hit.stageName, hit.stepName));
-    if (!el) return;
-    const card = el.closest("article") ?? el;
-    pendingStageScroll.current = null;
-    spyLock.current = true;
-    const pin = card;
-    alignCardToRail(pin, "auto");
-    window.requestAnimationFrame(() => alignCardToRail(pin, "auto"));
-    releaseSpyLock();
-  };
-
-  const scrollToSearch = () => {
-    const bar = searchBarRef.current;
-    const scroller = nearestScroller(bar);
-    setScrollY(scroller, 0, "smooth");
-  };
-
-  const jumpToHit = (hit: SearchHit) => {
-    setOverlayOpen(false);
-    pendingHit.current = hit;
-    setSearchHighlight({
-      stepKey: stepFocusKey(hit.stageName, hit.stepName),
-      docId: hit.docId ?? null,
-      systemLabel: hit.systemLabel ?? null,
-    });
-    if (!browsingPhase || hit.phaseId !== phaseFromUrl) {
-      setSearchParams({ phase: hit.phaseId });
-      window.localStorage.setItem(LS_KEY, hit.phaseId);
-      return;
-    }
-    pendingHit.current = null;
-    applyHit(hit);
-  };
-
-  useEffect(() => {
-    const hit = pendingHit.current;
-    if (!hit || !browsingPhase || hit.phaseId !== phaseFromUrl) return;
-    const ready = journeyItems.some(
-      (item) =>
-        item.stageName === hit.stageName &&
-        (item.classified.step.name === hit.stepName ||
-          (item.packMembers ?? []).some((m) => m.step.name === hit.stepName)),
-    );
-    if (!ready) return;
-    pendingHit.current = null;
-    const id = window.requestAnimationFrame(() => {
-      window.requestAnimationFrame(() => applyHit(hit));
-    });
-    return () => window.cancelAnimationFrame(id);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [phaseFromUrl, browsingPhase, navKeySig, journeyItems]);
 
   useEffect(() => {
     const pending = pendingStageScroll.current;
@@ -2837,86 +3461,6 @@ export function ProcessV19Page() {
     };
   }, [visibleJourneyItems, browsingPhase]);
 
-  const clearSearch = () => {
-    setSearchQuery("");
-    setOverlayOpen(false);
-    setSearchHighlight(null);
-    pendingHit.current = null;
-  };
-
-  const openOverlay = () => {
-    if (needsContext) return;
-    setOverlayOpen(true);
-    window.requestAnimationFrame(() => {
-      document.getElementById("process-v19-search")?.focus();
-    });
-  };
-
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "k") {
-        const tag = (e.target as HTMLElement | null)?.tagName;
-        if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT") {
-          if (e.target !== document.getElementById("process-v19-search")) {
-            return;
-          }
-        }
-        e.preventDefault();
-        openOverlay();
-        return;
-      }
-      if (e.key === "Escape" && overlayOpen) {
-        e.preventDefault();
-        setOverlayOpen(false);
-      }
-    };
-    window.addEventListener("keydown", onKey);
-    return () => window.removeEventListener("keydown", onKey);
-  }, [overlayOpen, needsContext]);
-
-  useEffect(() => {
-    if (!browsingPhase) {
-      setSearchStuck(false);
-      return;
-    }
-    const sentinel = searchSentinelRef.current;
-    const bar = searchBarRef.current;
-    if (!sentinel || !bar) return;
-    const scroller = nearestScroller(bar);
-    const root = scroller instanceof HTMLElement ? scroller : null;
-    const io = new IntersectionObserver(
-      ([entry]) => {
-        if (spyLock.current) return;
-        const y = scrollYOf(scroller);
-        if (y <= 16) {
-          holdStuckUntilTop.current = false;
-          setSearchStuck(false);
-          return;
-        }
-        if (holdStuckUntilTop.current) {
-          setSearchStuck(true);
-          return;
-        }
-        setSearchStuck(!entry.isIntersecting);
-      },
-      { root, threshold: 0 },
-    );
-    io.observe(sentinel);
-    return () => io.disconnect();
-  }, [browsingPhase]);
-
-  useEffect(() => {
-    if (!overlayOpen) return;
-    const onPointer = (e: PointerEvent) => {
-      const bar = searchBarRef.current;
-      const target = e.target as Node | null;
-      if (bar && target && bar.contains(target)) return;
-      setOverlayOpen(false);
-    };
-    window.addEventListener("pointerdown", onPointer);
-    return () => window.removeEventListener("pointerdown", onPointer);
-  }, [overlayOpen]);
-
   useEffect(() => {
     if (!browsingPhase || needsContext || visibleJourneyItems.length === 0) return;
 
@@ -2927,15 +3471,20 @@ export function ProcessV19Page() {
 
     const syncFromScroll = () => {
       if (spyLock.current) return;
-      const line = spyReadLine();
+      const last = visibleJourneyItems[visibleJourneyItems.length - 1];
       let next = visibleJourneyItems[0];
-      for (const item of visibleJourneyItems) {
-        const el = document.getElementById(
-          stepDomId(item.stageName, item.classified.step.name),
-        );
-        if (!el) continue;
-        const card = el.closest("article") ?? el;
-        if (card.getBoundingClientRect().top <= line) next = item;
+      if (last && isScrollerAtEnd(scroller)) {
+        next = last;
+      } else {
+        const line = spyReadLine();
+        for (const item of visibleJourneyItems) {
+          const el = document.getElementById(
+            stepDomId(item.stageName, item.classified.step.name),
+          );
+          if (!el) continue;
+          const card = el.closest("article") ?? el;
+          if (card.getBoundingClientRect().top <= line) next = item;
+        }
       }
       const key = stepFocusKey(next.stageName, next.classified.step.name);
       setFocusedStep((prev) => (prev === key ? prev : key));
@@ -2958,72 +3507,25 @@ export function ProcessV19Page() {
     };
   }, [navKeySig, needsContext, browsingPhase, visibleJourneyItems]);
 
-  useEffect(() => {
-    if (!searchHighlight || overlayOpen || pendingHit.current) return;
-    const onHit =
-      focusedStep === searchHighlight.stepKey ||
-      visibleJourneyItems.some((item) => {
-        const key = stepFocusKey(item.stageName, item.classified.step.name);
-        if (key !== focusedStep) return false;
-        if (key === searchHighlight.stepKey) return true;
-        return (item.packMembers ?? []).some(
-          (m) =>
-            stepFocusKey(item.stageName, m.step.name) ===
-            searchHighlight.stepKey,
-        );
-      });
-    if (!onHit) {
-      setSearchQuery("");
-      setOverlayOpen(false);
-      setSearchHighlight(null);
-    }
-  }, [focusedStep, overlayOpen, searchHighlight, visibleJourneyItems]);
-
   const chips = needsContext
     ? ["All Terminals", "All Zones"]
     : [ctxUnit.terminal, ctxUnit.zone, ctxUnit.tenancyType];
 
   const unitLabel = needsContext ? "All units" : ctxUnit.unitNo;
 
-  const onSearchQuery = (value: string) => {
-    setSearchQuery(value);
-    setSearchHighlight(null);
-    setOverlayOpen(true);
-  };
-  const onSearchChip = (chip: string) => {
-    const row = usualJumps.find((r) => r.chip === chip);
-    setSearchQuery("");
-    setOverlayOpen(false);
-    if (row) jumpToHit(row.hit);
-  };
-  const searchField = (size: "hero" | "bar" | "toolbar") => (
-    <GuideSearch
-      query={searchQuery}
-      hits={searchHits}
-      disabled={needsContext}
-      overlayOpen={overlayOpen}
-      size={size}
-      onQuery={onSearchQuery}
-      onClear={clearSearch}
-      onJump={jumpToHit}
-      onOpenOverlay={openOverlay}
-    />
-  );
-
   const jumpStage = (name: string) => {
     const first = journeyItems.find((i) => i.stageName === name);
     if (!first) return;
     if (journeyItems[0]?.stageName === name) {
-      holdStuckUntilTop.current = false;
       focusStep(first.stageName, first.classified.step.name);
       spyLock.current = true;
-      setSearchStuck(false);
-      const bar = searchBarRef.current;
-      setScrollY(nearestScroller(bar), 0, "auto");
+      const el = document.getElementById(
+        stepDomId(first.stageName, first.classified.step.name),
+      );
+      setScrollY(nearestScroller(el), 0, "auto");
       releaseSpyLock();
       return;
     }
-    holdStuckUntilTop.current = true;
     scrollToStep(first.stageName, first.classified.step.name);
   };
 
@@ -3031,20 +3533,15 @@ export function ProcessV19Page() {
     showWorksSticky ? (
       <WorksSticky
         title={worksSticky.title}
+        subtitle={worksSticky.subtitle}
         cta={worksSticky.cta}
+        answered={worksProgress.answered}
+        total={worksProgress.total}
+        track={worksSticky.track}
+        tip={worksSticky.tip}
         onOpen={() => openQuizSheet(true)}
       />
     ) : null;
-
-  const searchDock = () => {
-    return (
-      <div
-        ref={searchSentinelRef}
-        className="h-px w-px overflow-hidden"
-        aria-hidden
-      />
-    );
-  };
 
   const unitPicker = (
     <div className="flex w-full flex-col gap-2 tablet:w-[259px] tablet:shrink-0 tablet:items-end">
@@ -3082,28 +3579,12 @@ export function ProcessV19Page() {
 
   const pathSteps = visibleJourneyItems.map((item) => {
     const key = stepFocusKey(item.stageName, item.classified.step.name);
-    const packKeys = (item.packMembers ?? []).map((m) =>
-      stepFocusKey(item.stageName, m.step.name),
-    );
-    const hitOnCard =
-      searchHighlight?.stepKey === key ||
-      packKeys.includes(searchHighlight?.stepKey ?? "");
     return (
       <PathStep
         key={key}
         classified={item.classified}
         stageName={item.stageName}
         packMembers={item.packMembers}
-        highlightStepName={
-          item.packMembers?.find(
-            (m) =>
-              stepFocusKey(item.stageName, m.step.name) ===
-              searchHighlight?.stepKey,
-          )?.step.name ?? null
-        }
-        jumpedTo={hitOnCard}
-        highlightDocId={hitOnCard ? searchHighlight?.docId : null}
-        highlightSystemLabel={hitOnCard ? searchHighlight?.systemLabel : null}
         role={role}
         tenancyType={ctxUnit.tenancyType}
         terminal={ctxUnit.terminal}
@@ -3112,20 +3593,17 @@ export function ProcessV19Page() {
         quiz={
           showQuiz
             ? {
-                kickoffSoon: Boolean(activeJob.kickoffSoon),
-                state:
-                  officerDraft &&
-                  item.stageName === KICKOFF_STAGE_NAME &&
-                  item.classified.step.name === KICKOFF_STEP_NAME
-                    ? officerDraft
-                    : quiz,
+                kickoffSoon: isContractor
+                  ? Boolean(activeJob.kickoffSoon)
+                  : kickoffSoonForUnit(ctxUnit),
+                state: quiz,
                 questions: quizQuestions,
                 summary: quizSummary,
                 flags: plannedFlags,
                 permitResult,
                 onStart: () =>
                   role === "officer"
-                    ? openOfficerDraft()
+                    ? openQuizSheet(true)
                     : persistQuiz({
                         status: "editing",
                         answers: quiz.answers,
@@ -3157,20 +3635,13 @@ export function ProcessV19Page() {
                 },
                 onEdit: () =>
                   role === "officer"
-                    ? openOfficerDraft()
+                    ? openQuizSheet(true)
                     : persistQuiz({
                         status: "editing",
                         answers: quiz.answers,
                         confirmed: quiz.confirmed,
                       }),
                 onOpenQuiz: (edit = true) => {
-                  if (role === "officer") {
-                    if (edit && quizCanWrite(role, quiz)) {
-                      openOfficerDraft();
-                    }
-                    scrollToStep(KICKOFF_STAGE_NAME, KICKOFF_STEP_NAME);
-                    return;
-                  }
                   openQuizSheet(edit);
                 },
                 onApplySlugs: (slugs) => {
@@ -3201,205 +3672,136 @@ export function ProcessV19Page() {
               <p className="text-sm leading-[18px] text-grey-500">
                 {needsContext
                   ? "Choose a unit to open this guide."
-                  : browsingPhase
-                    ? active.description
-                    : "Find a step, form, or system."}
+                  : active.description}
               </p>
             </div>
             {unitPicker}
           </div>
+        </header>
 
-          {!browsingPhase && (
+        <div className="flex min-w-0 flex-col">
+          <div className="mt-4 desktop:hidden">
             <PhaseTabStrip
               phases={visiblePhases}
               activeId={active.id}
-              browsing={false}
+              browsing
               disabled={needsContext}
               onSelect={selectPhase}
             />
-          )}
+          </div>
 
           <div
-            id="process-v19-search-bar"
-            ref={searchBarRef}
-            className="relative z-30 flex flex-col gap-3"
+            id="process-v19-mobile-pin"
+            className="sticky top-0 z-20 -mx-4 border-b border-grey-100 bg-grey-50 px-4 py-3 desktop:hidden"
           >
-            <div
-              className={cn(
-                "process-search-card flex flex-col overflow-visible rounded-[var(--radius-2xl)] shadow-[var(--shadow-light-bg)]",
-                browsingPhase ? "gap-3 p-4" : "gap-4 p-5 tablet:p-6",
-              )}
-            >
-              <div className="flex min-w-0 flex-col gap-1">
-                <h2
-                  className={cn(
-                    "font-bold text-black",
-                    browsingPhase
-                      ? "text-lg leading-[22px]"
-                      : "text-xl leading-7 tablet:text-2xl tablet:leading-[30px]",
-                  )}
-                >
-                  {needsContext ? "Choose a unit first." : "Search this guide"}
-                </h2>
-                <p className="text-sm leading-[18px] text-grey-700">
-                  {needsContext
-                    ? "Then find a step, form, or system."
-                    : "Find a step, form, or system."}
-                </p>
-              </div>
-              {searchField(browsingPhase ? "toolbar" : "hero")}
-              {usualJumps.length > 0 && (
-                <ChipRow
-                  rows={usualJumps}
-                  disabled={needsContext}
-                  align={browsingPhase ? "start" : "center"}
-                  onChip={onSearchChip}
-                />
-              )}
+            <div className="flex flex-col gap-3">
+              <JourneyNav
+                phases={visiblePhases}
+                activePhaseId={active.id}
+                stageBlocks={stageBlocks}
+                activeStageName={focusedItem?.stageName ?? null}
+                compact
+                disabled={needsContext}
+                onSelectPhase={selectPhase}
+                onSelectStage={jumpStage}
+              />
+              {pinWorksSticky ? renderWorksSticky() : null}
             </div>
           </div>
-        </header>
 
-        {!browsingPhase ? (
-          <>
-            {usualJumps.length > 0 && (
-              <section className="flex flex-col gap-4">
-                <h2 className="text-xl leading-7 font-bold text-black">
-                  Quick links
-                </h2>
-                <UsualJumpList
-                  rows={usualJumps}
-                  disabled={needsContext}
-                  onJump={jumpToHit}
-                />
-              </section>
-            )}
-
-            <section className="flex flex-col gap-4">
-              <h2 className="text-xl leading-7 font-bold text-black">
-                Process guides
-              </h2>
-              <PhaseGuideGrid
-                phases={visiblePhases}
-                onSelect={selectPhase}
-              />
-            </section>
-          </>
-        ) : (
-          <div className="flex min-w-0 flex-col">
-            {searchDock()}
-
-            <div className="sticky top-0 z-20 -mx-4 border-b border-grey-100 bg-grey-50 px-4 py-3 desktop:hidden">
-              <div className="flex flex-col gap-3">
+          <div className="mt-4 grid grid-cols-1 gap-6 desktop:mt-6 desktop:grid-cols-12 desktop:items-start">
+            <aside
+              ref={railRef}
+              className="hidden min-w-0 desktop:sticky desktop:top-8 desktop:col-span-4 desktop:col-start-9 desktop:row-start-1 desktop:flex desktop:h-[calc(100dvh-4rem)] desktop:max-h-[calc(100dvh-4rem)] desktop:flex-col desktop:self-start"
+            >
+              <div className="flex min-h-0 flex-1 flex-col gap-4">
                 <PhaseTabStrip
                   phases={visiblePhases}
                   activeId={active.id}
                   browsing
                   disabled={needsContext}
                   onSelect={selectPhase}
-                  onReselectActive={showLanding}
                 />
-                <JourneyNav
-                  phases={visiblePhases}
-                  activePhaseId={active.id}
-                  stageBlocks={stageBlocks}
-                  activeStageName={focusedItem?.stageName ?? null}
-                  compact
-                  disabled={needsContext}
-                  onSelectPhase={selectPhase}
-                  onSelectStage={jumpStage}
-                />
-                {renderWorksSticky()}
-              </div>
-            </div>
-
-            <div className="mt-4 grid grid-cols-1 gap-6 desktop:mt-6 desktop:grid-cols-12 desktop:items-start">
-              <aside className="hidden min-w-0 desktop:sticky desktop:top-8 desktop:col-span-4 desktop:col-start-9 desktop:row-start-1 desktop:block desktop:self-start">
-                <div className="flex flex-col gap-4">
-                  <PhaseTabStrip
+                <DocumentFilterPanel>
+                  <JourneyNav
                     phases={visiblePhases}
-                    activeId={active.id}
-                    browsing
+                    activePhaseId={active.id}
+                    stageBlocks={stageBlocks}
+                    activeStageName={focusedItem?.stageName ?? null}
+                    activeStepName={
+                      focusedItem
+                        ? (focusedItem.packMembers?.find(
+                            (member) =>
+                              stepFocusKey(
+                                focusedItem.stageName,
+                                member.step.name,
+                              ) === focusedStep,
+                          )?.step.name ?? focusedItem.classified.step.name)
+                        : null
+                    }
+                    rail
+                    role={role}
                     disabled={needsContext}
-                    onSelect={selectPhase}
-                    onReselectActive={showLanding}
+                    onSelectPhase={selectPhase}
+                    onSelectStage={jumpStage}
+                    onSelectStep={scrollToStep}
                   />
-                  <DocumentFilterPanel onClose={showLanding}>
-                    <JourneyNav
-                      phases={visiblePhases}
-                      activePhaseId={active.id}
-                      stageBlocks={stageBlocks}
-                      activeStageName={focusedItem?.stageName ?? null}
-                      activeStepName={
-                        focusedItem
-                          ? (focusedItem.packMembers?.find(
-                              (member) =>
-                                stepFocusKey(
-                                  focusedItem.stageName,
-                                  member.step.name,
-                                ) === focusedStep,
-                            )?.step.name ?? focusedItem.classified.step.name)
-                          : null
-                      }
-                      rail
-                      role={role}
-                      disabled={needsContext}
-                      onSelectPhase={selectPhase}
-                      onSelectStage={jumpStage}
-                      onSelectStep={scrollToStep}
-                    />
-                  </DocumentFilterPanel>
-                  {renderWorksSticky()}
-                </div>
-              </aside>
-              <section
-                className={cn(
-                  "flex min-w-0 flex-col gap-6 desktop:col-span-8 desktop:col-start-1 desktop:row-start-1",
-                  pinYouAreHere && "pb-16",
-                )}
-              >
-                {pathSteps}
-              </section>
-            </div>
-
-            {searchStuck && !previewDocId && (
-              <button
-                type="button"
-                onClick={scrollToSearch}
-                aria-label="Back to Search"
-                className="fixed right-4 bottom-[max(1rem,env(safe-area-inset-bottom))] z-30 grid size-10 place-items-center rounded-full bg-purple-600 text-white shadow-[var(--shadow-light-bg)] hover:bg-purple-700 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)] tablet:right-8 tablet:bottom-8 tablet:size-12"
-              >
-                <span
-                  className="grid size-5 place-items-center [&_img]:brightness-0 [&_img]:invert tablet:size-6"
-                  aria-hidden
-                >
-                  <IconLeaf
-                    src={caretDown}
-                    leafW={10}
-                    leafH={6}
-                    frame={20}
-                    rotate={180}
-                  />
-                </span>
-              </button>
-            )}
+                </DocumentFilterPanel>
+                {showWorksSticky ? (
+                  <div className="mt-auto shrink-0">{renderWorksSticky()}</div>
+                ) : null}
+              </div>
+            </aside>
+            <section className="flex min-w-0 flex-col gap-6 desktop:col-span-8 desktop:col-start-1 desktop:row-start-1">
+              {pathSteps}
+            </section>
           </div>
-        )}
+        </div>
       </div>
 
       <DocumentPreviewDrawer
         docId={previewDocId}
         onClose={() => setPreviewDocId(null)}
       />
-      {isContractor && showQuiz && quizCanWrite(role, quiz) && (
+      {showQuiz && isOfficer && (
+        <OfficerEditGate
+          open={officerEditGateOpen}
+          onConfirm={openOfficerQuizSheet}
+          onClose={() => setOfficerEditGateOpen(false)}
+        />
+      )}
+      {showQuiz &&
+        (isOfficer || (isContractor && quizCanWrite(role, quiz))) && (
         <PlannedWorksSheet
           open={quizSheetOpen}
           questions={quizQuestions}
-          state={quiz}
-          onToggle={(questionId, optionId) =>
-            persistQuiz(toggleQuestionOption(quiz, questionId, optionId))
-          }
+          state={isOfficer ? (officerDraft ?? quiz) : quiz}
+          allowUnsure={!isOfficer}
+          onToggle={(questionId, optionId) => {
+            if (isOfficer) {
+              setOfficerDraft((draft) =>
+                toggleQuestionOption(draft ?? quiz, questionId, optionId),
+              );
+              return;
+            }
+            persistQuiz(toggleQuestionOption(quiz, questionId, optionId));
+          }}
           onSave={() => {
+            if (isOfficer) {
+              const src = officerDraft ?? quiz;
+              persistQuiz(
+                settleQuizWrite(
+                  {
+                    ...src,
+                    confirmed: Boolean(quiz.confirmed),
+                  },
+                  ctxUnit,
+                ),
+              );
+              setOfficerDraft(null);
+              setQuizSheetOpen(false);
+              return;
+            }
             persistQuiz({
               status: "done",
               answers: quiz.answers,
@@ -3414,7 +3816,26 @@ export function ProcessV19Page() {
   );
 }
 
-type DropdownOption = { value: string; label: string };
+type DropdownOption = { value: string; label: string; prefix?: string };
+
+function DropdownLabel({
+  prefix,
+  label,
+}: {
+  prefix?: string;
+  label: string;
+}) {
+  if (!prefix) return <>{label}</>;
+  return (
+    <>
+      <span className="font-normal text-grey-400">{prefix}</span>
+      <span className="px-1.5 font-normal text-grey-300" aria-hidden>
+        /
+      </span>
+      <span className="font-bold text-black">{label}</span>
+    </>
+  );
+}
 
 function DropdownField({
   label,
@@ -3551,7 +3972,7 @@ function DropdownField({
               : "text-sm leading-[18px] tablet:py-3 tablet:pl-4 tablet:text-base tablet:leading-5",
           )}
         >
-          {selected?.label ?? ""}
+          <DropdownLabel prefix={selected?.prefix} label={selected?.label ?? ""} />
         </span>
         <span
           className="pointer-events-none flex shrink-0 items-center px-3 py-2"
@@ -3595,7 +4016,7 @@ function DropdownField({
                   !isSelected && !isActive && "text-black",
                 )}
               >
-                {option.label}
+                <DropdownLabel prefix={option.prefix} label={option.label} />
               </li>
             );
           })}
@@ -3714,32 +4135,18 @@ function FilterChip({
 }
 
 /** `_Components/DocLibrary/DocumentFilterPanel` — Filters header, items, footer. */
-function DocumentFilterPanel({
-  children,
-  onClose,
-}: {
-  children: ReactNode;
-  onClose: () => void;
-}) {
+function DocumentFilterPanel({ children }: { children: ReactNode }) {
   return (
-    <div className="relative overflow-hidden rounded-[var(--radius-md)] border border-grey-100 bg-white shadow-[var(--shadow-light-bg)]">
-      <div className="relative flex items-start gap-2 bg-white px-6">
+    <div className="relative flex min-h-0 flex-1 flex-col overflow-hidden rounded-[var(--radius-md)] border border-grey-100 bg-white shadow-[var(--shadow-light-bg)]">
+      <div className="relative flex shrink-0 items-start gap-2 bg-white px-6">
         <div className="flex min-w-0 flex-1 flex-col gap-1 pt-6 pb-2">
           <p className="text-xl leading-7 font-bold text-grey-900">View By</p>
           <p className="text-sm leading-[18px] text-grey-700">
             Select something, to view a card etc....
           </p>
         </div>
-        <button
-          type="button"
-          aria-label="Close"
-          onClick={onClose}
-          className="absolute top-3 right-4 grid size-10 shrink-0 place-items-center rounded-[var(--radius-sm)] text-black hover:bg-grey-50 focus-visible:outline-none focus-visible:shadow-[0_0_0_4px_var(--color-purple-200)]"
-        >
-          <IconLeaf src={closeIcon} leafW={11.67} leafH={11.67} frame={20} />
-        </button>
       </div>
-      <div className="max-h-[calc(100dvh-16rem)] overflow-y-auto p-6">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain p-6">
         {children}
       </div>
     </div>
@@ -3778,7 +4185,16 @@ function JourneyNav({
   onSelectStep?: (stageName: string, stepName: string) => void;
 }) {
   const stageRowRef = useRef<HTMLDivElement | null>(null);
+  const railListRef = useRef<HTMLDivElement | null>(null);
   const phaseLabel = TAB_LABEL[activePhaseId] ?? activePhaseId;
+
+  useEffect(() => {
+    if (!rail) return;
+    const current = railListRef.current?.querySelector<HTMLElement>(
+      "[aria-current='location']",
+    );
+    current?.scrollIntoView({ block: "nearest" });
+  }, [activeStageName, activeStepName, rail]);
 
   useEffect(() => {
     if (compact || rail) return;
@@ -3803,7 +4219,8 @@ function JourneyNav({
             className="w-full"
             options={stageBlocks.map((block) => ({
               value: block.stage.name,
-              label: `${phaseLabel} · ${block.stage.name}`,
+              prefix: phaseLabel,
+              label: block.stage.name,
             }))}
             onChange={onSelectStage}
           />
@@ -3822,6 +4239,7 @@ function JourneyNav({
             className="w-full"
             options={stageBlocks.map((block) => ({
               value: block.stage.name,
+              prefix: phaseLabel,
               label: block.stage.name,
             }))}
             onChange={onSelectStage}
@@ -3833,7 +4251,7 @@ function JourneyNav({
 
   if (rail) {
     return (
-      <div id={RAIL_ID} className="flex flex-col gap-4">
+      <div ref={railListRef} id={RAIL_ID} className="flex flex-col gap-4">
         {stageBlocks.map((block, index) => (
           <div
             key={block.stage.name}
@@ -3884,7 +4302,7 @@ function JourneyNav({
   return (
     <div id={RAIL_ID} className="flex flex-col gap-3">
       <div className="flex flex-col gap-2">
-        <p className="text-xs font-bold uppercase tracking-[0.08em] text-grey-400">
+        <p className={LABEL_CAPS}>
           Phase
         </p>
         <div
@@ -3905,7 +4323,7 @@ function JourneyNav({
       </div>
       {stageBlocks.length > 0 && (
         <div className="flex flex-col gap-2">
-          <p className="text-xs font-bold uppercase tracking-[0.08em] text-grey-400">
+          <p className={LABEL_CAPS}>
             You are here
           </p>
           <div
@@ -3928,71 +4346,6 @@ function JourneyNav({
         </div>
       )}
     </div>
-  );
-}
-
-function PhaseGuideGrid({
-  phases,
-  onSelect,
-}: {
-  phases: Phase[];
-  onSelect: (id: Phase["id"]) => void;
-}) {
-  return (
-    <div className="grid grid-cols-1 gap-4 tablet:grid-cols-2 desktop:grid-cols-4">
-      {phases.map((phase) => (
-        <button
-          key={phase.id}
-          type="button"
-          onClick={() => onSelect(phase.id)}
-          className="flex flex-col gap-2 rounded-[var(--radius-2xl)] bg-white p-6 text-left shadow-[var(--shadow-light-bg)] hover:shadow-[0_0_0_2px_var(--color-purple-600)] focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]"
-        >
-          <h3 className="text-lg leading-[22px] font-bold text-black">
-            {TAB_LABEL[phase.id] ?? phase.name}
-          </h3>
-          <p className="text-sm leading-[18px] text-grey-500">
-            {phase.description}
-          </p>
-        </button>
-      ))}
-    </div>
-  );
-}
-
-function UsualJumpList({
-  rows,
-  disabled,
-  onJump,
-}: {
-  rows: { chip: string; hit: SearchHit }[];
-  disabled?: boolean;
-  onJump: (hit: SearchHit) => void;
-}) {
-  return (
-    <ul className="grid grid-cols-2 gap-3 desktop:grid-cols-4">
-      {rows.map(({ chip, hit }) => (
-        <li key={chip}>
-          <button
-            type="button"
-            disabled={disabled}
-            onClick={() => onJump(hit)}
-            className="flex h-full min-h-[88px] w-full flex-col justify-between gap-3 rounded-[var(--radius-2xl)] border border-grey-100 bg-white p-4 text-left shadow-[var(--shadow-light-bg)] hover:shadow-[0_0_0_2px_var(--color-purple-600)] disabled:opacity-60 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]"
-          >
-            <span className="text-base leading-5 font-bold text-black">
-              {chip}
-            </span>
-            <span className="flex items-end justify-between gap-2">
-              <span className="min-w-0 truncate text-sm leading-[18px] text-grey-500">
-                {hit.displayTitle}
-              </span>
-              <span className="shrink-0 text-purple-600" aria-hidden>
-                <IconLeaf src={chevronRight} leafW={6} leafH={10} frame={12} />
-              </span>
-            </span>
-          </button>
-        </li>
-      ))}
-    </ul>
   );
 }
 
@@ -4042,7 +4395,7 @@ function PathStep({
   } | null;
   onPreviewDoc: (id: string) => void;
 }) {
-  const { step, mine, others } = classified;
+  const { step, mine, others, flow } = classified;
   const notes = notesYouFollow(mine, others, role);
   const purpose = stepWhat(step, role);
   const handoffOnly = mine.length === 0;
@@ -4057,8 +4410,34 @@ function PathStep({
     .map((s) => ({
       workIf: s.workIf ?? "",
       line: lineOf(s),
+      labels: actorLabelsForSub(s.audience, role),
     }))
-    .filter((row): row is { workIf: string; line: string } => Boolean(row.line));
+    .filter((row): row is { workIf: string; line: string; labels: string[] } =>
+      Boolean(row.line),
+    );
+  const party = role === "officer" ? cardActor(flow, role) : null;
+  const showParty = Boolean(party);
+  const tagLines = Boolean(party?.mixed);
+  const ownPartyLabels = showParty
+    ? party && !party.mixed
+      ? [party.label]
+      : ["You"]
+    : undefined;
+  const alsoRows = tagLines
+    ? others
+        .filter((s) => !s.workIf)
+        .map((s) => {
+          const line = alsoHappeningText(s, role);
+          if (!line) return null;
+          return {
+            line,
+            labels: actorLabelsForSub(s.audience, role),
+          };
+        })
+        .filter((row): row is { line: string; labels: string[] } =>
+          Boolean(row),
+        )
+    : [];
 
   const isPtwPack = packMembers !== undefined;
   const docs = useMemo(() => {
@@ -4073,6 +4452,8 @@ function PathStep({
   const hostsQuiz = Boolean(quiz) && step.name === QUIZ_STEP_NAME;
   const hostsKickoff =
     stageName === KICKOFF_STAGE_NAME && step.name === KICKOFF_STEP_NAME;
+  const hostsPostKickoffPack =
+    stageName === "Post-Kickoff" && step.name === "Onboarding Guidelines Shared";
   const quizStatus = quiz?.state.status ?? "idle";
   const editMode = quizEditMode(role);
   const confirmed = Boolean(quiz && quizIsConfirmed(quiz.state));
@@ -4081,7 +4462,6 @@ function PathStep({
   const canWriteQuiz = contractorCanWrite;
   const hasAnswers = Boolean(quiz && quizHasSavedAnswers(quiz.state));
   const reviewRows = quiz ? quizReviewRows(quiz.state, unit) : [];
-  const openReviewCount = unansweredReviewCount(reviewRows);
   const needsGuide =
     Boolean(quiz) && quizNeedsOfficerGuide(quiz.state, unit);
   const officerPending = officerCanWrite && !confirmed;
@@ -4089,17 +4469,26 @@ function PathStep({
     ? hostsKickoff
       ? quizCopy.reviewLabelOfficerConfirm
       : quizCopy.reviewLabelOfficerPending
-    : officerCanWrite && confirmed
-      ? quizCopy.reviewLabelOfficerAgreed
-      : quizCopy.reviewLabel;
+    : confirmed
+      ? officerCanWrite
+        ? quizCopy.reviewLabelOfficerAgreed
+        : role === "contractor"
+          ? quizCopy.reviewLabelContractorAgreed
+          : quizCopy.reviewLabelTenantAgreed
+      : role === "tenant"
+        ? quizCopy.reviewLabelTenantPending
+        : quizCopy.reviewLabel;
   const officerReviewHint = hostsKickoff
     ? quizCopy.officerPossibleLine
     : quizCopy.officerReadLine;
+  const quizStillOpen = Boolean(quiz && quizHasUnanswered(quiz.state));
   const reviewBannerTitle = officerPending
     ? officerReviewHint
-    : role === "contractor" && contractorCanWrite && openReviewCount > 0
+    : role === "contractor" && contractorCanWrite && quizStillOpen
       ? quizCopy.bannerContractorPaused
       : reviewLabel;
+  const hideContractorDoneBanner =
+    role === "contractor" && contractorCanWrite && !quizStillOpen;
 
   const copy = lifeSgCard(role, stageName, isPtwPack ? PTW_PACK_HOST : step.name);
   const lead = cardLead(
@@ -4107,16 +4496,73 @@ function PathStep({
     stageName,
     isPtwPack ? PTW_PACK_HOST : step.name,
   );
+  const tenantFilledUnaligned =
+    role === "tenant" && hasAnswers && !confirmed;
+  const rewriteTenantFilledLine = (line: string) =>
+    tenantFilledUnaligned &&
+    (line === "Get planned works from your contractor." ||
+      line === "Read the works your contractor confirmed.")
+      ? quizCopy.tenantFilledLine
+      : line;
   const rawSubheader = copy?.subheader ?? purpose;
-  const subheaderLines = Array.isArray(rawSubheader) ? rawSubheader : null;
+  const subheaderLines = Array.isArray(rawSubheader)
+    ? rawSubheader.map(rewriteTenantFilledLine)
+    : null;
   const subheader = Array.isArray(rawSubheader)
     ? rawSubheader.join(" ")
     : rawSubheader;
   const remainingHow = [
-    ...(copy ? (copy.how ?? []) : howLines),
+    ...(copy ? (copy.how ?? []).map(rewriteTenantFilledLine) : howLines),
     ...(hostsQuiz && editMode === "correct" && needsGuide && !confirmed
       ? quizCopy.officerGuideHow
       : []),
+  ];
+  const howRows = [
+    ...(copy
+      ? (copy.how ?? []).map((line) => ({
+          line: rewriteTenantFilledLine(line),
+          labels: ownPartyLabels,
+        }))
+      : [...sequential, ...parallel]
+          .map((s) => {
+            const line = lineOf(s);
+            if (!line) return null;
+            return {
+              line,
+              labels: showParty
+                ? actorLabelsForSub(s.audience, role)
+                : undefined,
+            };
+          })
+          .filter(
+            (row): row is { line: string; labels: string[] | undefined } =>
+              Boolean(row),
+          )),
+    ...(hostsQuiz && editMode === "correct" && needsGuide && !confirmed
+      ? quizCopy.officerGuideHow.map((line) => ({
+          line,
+          labels: ownPartyLabels,
+        }))
+      : []),
+  ];
+  const seenPartyLines = new Set(
+    [...(subheaderLines ?? []), ...remainingHow].map((line) =>
+      line.toLowerCase().replace(/[.]+$/g, "").trim(),
+    ),
+  );
+  const extraPartyRows = alsoRows.filter(
+    (row) =>
+      !seenPartyLines.has(row.line.toLowerCase().replace(/[.]+$/g, "").trim()),
+  );
+  const mainRows = [
+    ...(subheaderLines ?? []).map((line) => ({
+      line,
+      labels: ownPartyLabels,
+    })),
+    ...extraPartyRows.map((row) => ({
+      line: row.line,
+      labels: row.labels,
+    })),
   ];
   const whenRows = useMemo(
     () =>
@@ -4146,6 +4592,7 @@ function PathStep({
   const packSystems = mergeSystems(
     packSystemsNamedIn(subheader, role),
     ...remainingHow.map((line) => packSystemsNamedIn(line, role)),
+    ...extraPartyRows.map((row) => packSystemsNamedIn(row.line, role)),
     ...onlyIf.map((row) => packSystemsNamedIn(row.line, role)),
     ...(packMembers ?? []).map((m) =>
       packSystemsNamedIn(stepWhat(m.step, role), role),
@@ -4154,7 +4601,6 @@ function PathStep({
   const { guides, samples } = splitStepDocs(docs);
   const showOnlyIf = onlyIf.length > 0 && !copy?.hideOnlyIf;
   const permitResult = quiz?.permitResult ?? null;
-  const showQuizNudge = false;
   const showPermitResults =
     Boolean(permitResult) && hostsQuiz && quizStatus !== "editing";
   const showKickoffChecklist =
@@ -4162,26 +4608,46 @@ function PathStep({
     stageName === KICKOFF_STAGE_NAME &&
     step.name === KICKOFF_STEP_NAME &&
     quizStatus !== "editing";
-  const showOfficerQuizForm =
-    officerCanWrite &&
-    Boolean(quiz) &&
-    quizStatus === "editing" &&
-    hostsKickoff;
   const showKickoffCorrection =
     Boolean(quiz) &&
     hostsKickoff &&
-    !showOfficerQuizForm &&
     officerCanWrite;
+  const officerKickoffDecide =
+    showKickoffCorrection && (hasAnswers || confirmed);
+  const reviewReady =
+    editMode === "read" || editMode === "correct"
+      ? confirmed || !quizStillOpen
+      : hasAnswers;
+  const tenantWaitingOnContractor = role === "tenant" && !hasAnswers;
+  const tenantIdleSoon =
+    tenantWaitingOnContractor && Boolean(quiz?.kickoffSoon);
+  const showInlineQuizSummary =
+    hostsQuiz &&
+    Boolean(quiz) &&
+    !confirmed &&
+    quizStatus !== "editing" &&
+    (editMode === "read" || editMode === "correct");
+  const inlineOpenCount = unansweredReviewCount(reviewRows);
   const showReview =
     Boolean(quiz) &&
-    !showOfficerQuizForm &&
     quizStatus !== "editing" &&
-    ((hostsQuiz && hasAnswers) ||
-      (hostsKickoff && (hasAnswers || confirmed)));
+    ((hostsQuiz && reviewReady) ||
+      (hostsKickoff && (reviewReady || confirmed)));
   const showLinkedWorks =
     showReview &&
     Boolean(permitResult) &&
     (hostsQuiz || hostsKickoff);
+  const showQuizNudge =
+    hostsQuiz &&
+    Boolean(quiz) &&
+    !showReview &&
+    !showLinkedWorks &&
+    contractorCanWrite &&
+    (quizStatus === "idle" || quizStatus === "paused");
+  const showContractorDoneSticky =
+    hideContractorDoneBanner && Boolean(quiz) && hostsQuiz;
+  const nudgeSticky = quiz ? quizStickyCopy(quiz.state, unit, role) : null;
+  const nudgeProgress = quiz ? quizProgress(quiz.state, unit) : null;
   const certainty = stepCertainty(step, quiz?.flags ?? null);
   const showPossible =
     certainty === "possible" && Boolean(quiz) && !isPtwPack && !confirmed;
@@ -4207,7 +4673,7 @@ function PathStep({
       : null;
   const packTypesBlock = packTypeRows ? (
     <div className="flex w-full flex-col gap-3">
-      <h4 className="text-xs font-bold uppercase tracking-[0.08em] text-grey-400">
+      <h4 className={LABEL_CAPS}>
         {PTW_PACK_TYPES_LABEL}
       </h4>
       <ul className="overflow-hidden rounded-[var(--radius-md)] border border-grey-200 bg-white">
@@ -4215,6 +4681,22 @@ function PathStep({
       </ul>
     </div>
   ) : null;
+  const showPossibleDecide = showPossible && Boolean(quiz) && hasAnswers;
+  const showPackDecide = Boolean(
+    isPtwPack && packTypesBlock && hasAnswers && !confirmed,
+  );
+  const showContractorScreenerCta =
+    role === "contractor" &&
+    confirmed &&
+    (isPtwPack || hostsPostKickoffPack);
+  const showCardFooter =
+    (showLinkedWorks && !hideContractorDoneBanner) ||
+    (showReview && !hideContractorDoneBanner) ||
+    showQuizNudge ||
+    showContractorDoneSticky ||
+    showInlineQuizSummary ||
+    showPossibleDecide ||
+    showPackDecide;
 
   const hasRail =
     guides.length > 0 || samples.length > 0 || packSystems.length > 0;
@@ -4224,7 +4706,7 @@ function PathStep({
       id={stepDomId(stageName, step.name)}
       className={cn(
         "flex flex-col gap-4 rounded-[var(--radius-2xl)] bg-white p-4 tablet:gap-6 tablet:p-6",
-        "scroll-mt-[16rem] tablet:scroll-mt-[12rem] desktop:scroll-mt-8",
+        "scroll-mt-[8rem] tablet:scroll-mt-[6rem] desktop:scroll-mt-8",
         jumpedTo
           ? "shadow-[0_0_0_2px_rgba(122,53,176,0.28),0px_6px_20px_rgba(18,18,18,0.08)] tablet:shadow-[0_0_0_4px_rgba(122,53,176,0.28),0px_6px_20px_rgba(18,18,18,0.08)]"
           : "shadow-[var(--shadow-light-bg)]",
@@ -4238,7 +4720,7 @@ function PathStep({
       >
       <div className={cn("flex min-w-0 flex-col gap-4 tablet:gap-6", hasRail && "desktop:col-span-5")}>
       <div className="flex flex-col gap-4">
-        <p className="text-xs font-bold uppercase tracking-[0.08em] text-grey-400">
+        <p className={LABEL_CAPS}>
           {stageName}
         </p>
         <div className="flex flex-col gap-1">
@@ -4247,43 +4729,26 @@ function PathStep({
               {cardTitle(role, stageName, isPtwPack ? PTW_PACK_HOST : step.name)}
             </h3>
             {showPossible && (
-              <span className={CHIP_MAY_APPLY}>{possibleChip(editMode)}</span>
+              <MayApplyChip
+                label={possibleChip(editMode)}
+                hint={possibleChipHint(editMode, tenantFilledUnaligned)}
+              />
             )}
           </div>
           {lead && (
             <p className="text-base leading-5 text-grey-700">{lead}</p>
           )}
         </div>
-        {showPossible && quiz && (
-          <Banner
-            body={
-              canWriteQuiz && (step.whenSlugs?.length ?? 0) > 0 ? (
-                <PossibleDecideActions
-                  onApply={() => quiz.onApplySlugs(step.whenSlugs ?? [])}
-                  onDismiss={() => quiz.onDismissSlugs(step.whenSlugs ?? [])}
-                />
-              ) : undefined
-            }
-          >
-            {canWriteQuiz
-              ? quizCopy.possibleDecideLine
+        {showPossible && !hasAnswers && (
+          <p className="text-sm leading-[18px] text-grey-600">
+            {editMode === "correct"
+              ? quizCopy.officerPossibleEmptyLine
               : possibleCopy(editMode)}
-          </Banner>
+          </p>
         )}
         {whenRows.length > 0 && <WhenChips rows={whenRows} role={role} />}
-        {subheaderLines && subheaderLines.length > 0 ? (
-          <ul className="flex flex-col gap-2">
-            {subheaderLines.map((line) => (
-              <li key={line} className="flex items-start gap-1.5">
-                <span className="mt-1 shrink-0">
-                  <IconLeaf src={dotIcon} leafW={5.33} leafH={5.33} frame={16} />
-                </span>
-                <p className="min-w-0 flex-1 text-base leading-5 text-grey-600">
-                  {line}
-                </p>
-              </li>
-            ))}
-          </ul>
+        {mainRows.length > 0 ? (
+          <PartyLineList rows={mainRows} />
         ) : (
           subheader && (
             <p className="text-base leading-5 text-grey-600">
@@ -4293,36 +4758,17 @@ function PathStep({
         )}
       </div>
 
-      {remainingHow.length > 0 && (
+      {howRows.length > 0 && (
         <FieldSection label="How">
-          <ul className="flex flex-col gap-3">
-            {remainingHow.map((line, i) => (
-              <li key={`${i}-${line}`} className="flex items-start gap-1.5">
-                <span className="mt-0.5 shrink-0">
-                  <IconLeaf src={dotIcon} leafW={5.33} leafH={5.33} frame={16} />
-                </span>
-                <span className="text-sm leading-[18px] text-grey-900">
-                  {line}
-                </span>
-              </li>
-            ))}
-          </ul>
+          <PartyLineList rows={howRows} size="how" />
         </FieldSection>
       )}
 
-      {isPtwPack && packTypesBlock && (
-        confirmed ? (
-          packTypesBlock
-        ) : (
-          <Banner fold defaultOpen body={packTypesBlock}>
-            {canWriteQuiz
-              ? quizCopy.possibleDecideLine
-              : possibleCopy(editMode)}
-          </Banner>
-        )
-      )}
+      {showContractorScreenerCta && <ScreenerPrepBanner />}
 
-      {showPermitResults && !showLinkedWorks && permitResult && (
+      {isPtwPack && packTypesBlock && !showPackDecide && packTypesBlock}
+
+      {showPermitResults && !showLinkedWorks && !showInlineQuizSummary && permitResult && (
         <FieldSection label={quizCopy.resultsLabel}>
           <PermitList
             result={permitResult}
@@ -4333,121 +4779,6 @@ function PathStep({
             onPreview={onPreviewDoc}
           />
         </FieldSection>
-      )}
-
-      {showLinkedWorks && permitResult && (
-        <Banner
-          fold
-          defaultOpen={officerPending}
-          actions={
-            officerPending && hostsKickoff && quiz ? (
-              <GuideCta tone="ghost" onClick={quiz.onConfirm}>
-                {quizCopy.officerConfirmCta}
-              </GuideCta>
-            ) : undefined
-          }
-          body={
-            <div className="flex w-full flex-col gap-4">
-              {officerPending ? (
-                <>
-                  <QuizAnswerReview rows={reviewRows} />
-                  {hostsKickoff && quiz && (
-                    <GuideCta tone="ghost" onClick={quiz.onEdit}>
-                      {quizCopy.officerEditCta}
-                    </GuideCta>
-                  )}
-                </>
-              ) : (
-                <QuizWorksLink
-                  rows={reviewRows}
-                  role={role}
-                  unit={unit}
-                  stageName={stageName}
-                  confirmed={confirmed}
-                  highlightedDocId={highlightDocId}
-                  onPreview={onPreviewDoc}
-                  actions={
-                    (hostsQuiz && contractorCanWrite && quiz) ||
-                    (officerCanWrite && quiz && hostsKickoff) ? (
-                      <>
-                        {hostsQuiz && contractorCanWrite && quiz && (
-                          <GuideCta tone="ghost" onClick={() => quiz.onOpenQuiz(true)}>
-                            {quizStatus === "paused"
-                              ? quizCopy.resumeCta
-                              : "Edit Answers"}
-                          </GuideCta>
-                        )}
-                        {officerCanWrite && quiz && hostsKickoff && (
-                          <OfficerQuizActions
-                            confirmed={confirmed}
-                            onConfirm={quiz.onConfirm}
-                            onEdit={quiz.onEdit}
-                          />
-                        )}
-                      </>
-                    ) : undefined
-                  }
-                />
-              )}
-            </div>
-          }
-        >
-          {reviewBannerTitle}
-        </Banner>
-      )}
-
-      {showReview && !showLinkedWorks && (
-        <Banner
-          fold
-          defaultOpen={officerPending}
-          actions={
-            officerPending && hostsKickoff && quiz ? (
-              <GuideCta tone="ghost" onClick={quiz.onConfirm}>
-                {quizCopy.officerConfirmCta}
-              </GuideCta>
-            ) : undefined
-          }
-          body={
-            <div className="flex w-full flex-col gap-4">
-              <QuizAnswerReview rows={reviewRows} />
-              {hostsQuiz && contractorCanWrite && quiz && (
-                <div className="border-t border-grey-200 pt-4">
-                  <GuideCta tone="ghost" onClick={() => quiz.onOpenQuiz(true)}>
-                    {quizStatus === "paused"
-                      ? quizCopy.resumeCta
-                      : "Edit Answers"}
-                  </GuideCta>
-                </div>
-              )}
-              {officerCanWrite && quiz && hostsKickoff && officerPending && (
-                <GuideCta tone="ghost" onClick={quiz.onEdit}>
-                  {quizCopy.officerEditCta}
-                </GuideCta>
-              )}
-              {officerCanWrite && quiz && hostsKickoff && !officerPending && (
-                <div className="border-t border-grey-200 pt-4">
-                  <OfficerQuizActions
-                    confirmed={confirmed}
-                    onConfirm={quiz.onConfirm}
-                    onEdit={quiz.onEdit}
-                  />
-                </div>
-              )}
-            </div>
-          }
-        >
-          {reviewBannerTitle}
-        </Banner>
-      )}
-
-      {showQuizNudge && quiz && (
-        <QuizNudge
-          status={quiz.state.status}
-          mode={editMode}
-          onOpen={
-            officerCanWrite ? () => quiz.onOpenQuiz(true) : quiz.onStart
-          }
-        />
       )}
 
       {showKickoffChecklist && !showLinkedWorks && permitResult && (
@@ -4469,68 +4800,53 @@ function PathStep({
         </FieldSection>
       )}
 
-      {showOfficerQuizForm && quiz && (
-        <FieldSection label={reviewLabel}>
-          <PlannedWorksForm
-            questions={quiz.questions}
-            state={quiz.state}
-            onToggle={quiz.onToggle}
-          />
-          <div className="flex flex-wrap items-center gap-2">
-            <GuideCta onClick={quiz.onConfirm}>
-              {confirmed
-                ? quizCopy.officerUpdateCta
-                : quizCopy.officerConfirmCta}
-            </GuideCta>
-            <GuideCta tone="ghost" onClick={quiz.onCancel}>
-              {quizCopy.officerCancelCta}
-            </GuideCta>
-          </div>
-        </FieldSection>
-      )}
-
-      {showKickoffCorrection && quiz && (
-        <FieldSection
-          label={
-            confirmed
-              ? quizCopy.kickoffUpdateLabel
-              : quizCopy.kickoffConfirmLabel
-          }
-        >
-          <BulletList
-            lines={
-              confirmed ? quizCopy.kickoffCorrection : quizCopy.kickoffConfirm
-            }
-          />
-          <OfficerQuizActions
-            confirmed={confirmed}
-            onConfirm={quiz.onConfirm}
-            onEdit={quiz.onEdit}
-          />
-        </FieldSection>
-      )}
-
       {showOnlyIf && (
         <FieldSection label="Only if">
-          <ul className="flex flex-col gap-3">
-            {onlyIf.map((row) => (
-              <li key={`${row.workIf}-${row.line}`} className="flex items-start gap-1.5">
-                <span className="mt-0.5 shrink-0">
-                  <IconLeaf src={dotIcon} leafW={5.33} leafH={5.33} frame={16} />
-                </span>
-                <div className="min-w-0 flex-1">
-                  {row.workIf && (
-                    <p className="text-xs font-bold leading-4 text-grey-500">
-                      {row.workIf}
-                    </p>
-                  )}
-                  <p className="text-sm leading-[18px] text-grey-900">
-                    {row.line}
-                  </p>
-                </div>
-              </li>
+          <div
+            className={
+              showParty ? "flex flex-col gap-4" : undefined
+            }
+          >
+            {groupByParty(
+              onlyIf.map((row) => ({
+                ...row,
+                labels: showParty ? row.labels : undefined,
+              })),
+            ).map((group, gi) => (
+              <div key={`${gi}-${group.key}`} className="flex flex-col gap-2">
+                {showParty && group.labels.length > 0 && (
+                  <PartyHead labels={group.labels} />
+                )}
+                <ul className="flex flex-col gap-3">
+                  {group.rows.map((row) => (
+                    <li
+                      key={`${row.workIf}-${row.line}`}
+                      className="flex items-start gap-1.5"
+                    >
+                      <span className="mt-0.5 shrink-0">
+                        <IconLeaf
+                          src={dotIcon}
+                          leafW={5.33}
+                          leafH={5.33}
+                          frame={16}
+                        />
+                      </span>
+                      <div className="min-w-0 flex-1">
+                        {row.workIf && (
+                          <p className="text-xs font-bold leading-4 text-grey-500">
+                            {row.workIf}
+                          </p>
+                        )}
+                        <p className="text-sm leading-[18px] text-grey-900">
+                          {row.line}
+                        </p>
+                      </div>
+                    </li>
+                  ))}
+                </ul>
+              </div>
             ))}
-          </ul>
+          </div>
         </FieldSection>
       )}
 
@@ -4565,6 +4881,241 @@ function PathStep({
         </aside>
       )}
       </div>
+      {showCardFooter && (
+        <div className="min-w-0">
+          {showPossibleDecide && quiz && (
+            <Banner
+              fold={!canWriteQuiz}
+              subtitle={canWriteQuiz ? quizCopy.possibleDecideSub : undefined}
+              body={
+                canWriteQuiz ? undefined : (
+                  <p className="text-sm leading-[18px] text-grey-700">
+                    {possibleCopy(editMode, tenantFilledUnaligned)}
+                  </p>
+                )
+              }
+            >
+              {canWriteQuiz
+                ? quizCopy.possibleDecideLine
+                : possibleCopy(editMode, tenantFilledUnaligned)}
+            </Banner>
+          )}
+          {showPackDecide && packTypesBlock && (
+            <Banner
+              fold
+              defaultOpen
+              subtitle={canWriteQuiz ? quizCopy.packDecideSub : undefined}
+              body={packTypesBlock}
+            >
+              {canWriteQuiz
+                ? quizCopy.packDecideLine
+                : possibleCopy(editMode, tenantFilledUnaligned)}
+            </Banner>
+          )}
+          {showLinkedWorks && permitResult && !hideContractorDoneBanner && (
+            officerKickoffDecide && quiz ? (
+              <OfficerConfirmBanner
+                title={reviewBannerTitle}
+                confirmed={confirmed}
+                onConfirm={quiz.onConfirm}
+                onEdit={quiz.onEdit}
+              >
+                {confirmed ? (
+                  <QuizWorksLink
+                    rows={reviewRows}
+                    role={role}
+                    unit={unit}
+                    stageName={stageName}
+                    confirmed={confirmed}
+                    highlightedDocId={highlightDocId}
+                    onPreview={onPreviewDoc}
+                  />
+                ) : (
+                  <QuizAnswerReview rows={reviewRows} />
+                )}
+              </OfficerConfirmBanner>
+            ) : (
+            <Banner
+              fold
+              tone={confirmed ? "quiet" : "warn"}
+              defaultOpen={
+                officerPending ||
+                confirmed ||
+                (hostsQuiz && editMode !== "fill")
+              }
+              body={
+                <div className="flex w-full flex-col gap-4">
+                  {confirmed && permitResult ? (
+                    <>
+                      <PermitList
+                        result={permitResult}
+                        unit={unit}
+                        role={role}
+                        stageName={stageName}
+                        highlightedDocId={highlightDocId}
+                        onPreview={onPreviewDoc}
+                      />
+                      {role !== "contractor" ? <ScreenerCta role={role} /> : null}
+                    </>
+                  ) : officerPending ? (
+                    <>
+                      <QuizAnswerReview rows={reviewRows} />
+                      {hostsQuiz && quiz ? (
+                        <div className="border-t border-grey-200 pt-4">
+                          <GuideCta tone="ghost" onClick={quiz.onEdit}>
+                            {quizCopy.officerEditCta}
+                          </GuideCta>
+                        </div>
+                      ) : null}
+                    </>
+                  ) : (
+                    <QuizWorksLink
+                      rows={reviewRows}
+                      role={role}
+                      unit={unit}
+                      stageName={stageName}
+                      confirmed={confirmed}
+                      highlightedDocId={highlightDocId}
+                      onPreview={onPreviewDoc}
+                      actions={
+                        hostsQuiz && contractorCanWrite && quiz ? (
+                          <GuideCta
+                            tone="ghost"
+                            onClick={() => quiz.onOpenQuiz(true)}
+                          >
+                            {quizStatus === "paused"
+                              ? quizCopy.resumeCta
+                              : "Edit Answers"}
+                          </GuideCta>
+                        ) : undefined
+                      }
+                    />
+                  )}
+                </div>
+              }
+            >
+              {reviewBannerTitle}
+            </Banner>
+            )
+          )}
+          {showReview && !showLinkedWorks && !hideContractorDoneBanner && (
+            officerKickoffDecide && quiz ? (
+              <OfficerConfirmBanner
+                title={reviewBannerTitle}
+                confirmed={confirmed}
+                onConfirm={quiz.onConfirm}
+                onEdit={quiz.onEdit}
+              >
+                <QuizAnswerReview rows={reviewRows} />
+              </OfficerConfirmBanner>
+            ) : (
+            <Banner
+              fold
+              tone={confirmed ? "quiet" : "warn"}
+              defaultOpen={
+                officerPending ||
+                confirmed ||
+                (hostsQuiz && editMode !== "fill")
+              }
+              body={
+                <div className="flex w-full flex-col gap-4">
+                  {confirmed && permitResult ? (
+                    <>
+                      <PermitList
+                        result={permitResult}
+                        unit={unit}
+                        role={role}
+                        stageName={stageName}
+                        highlightedDocId={highlightDocId}
+                        onPreview={onPreviewDoc}
+                      />
+                      {role !== "contractor" ? <ScreenerCta role={role} /> : null}
+                    </>
+                  ) : (
+                    <QuizAnswerReview rows={reviewRows} />
+                  )}
+                  {confirmed && permitResult ? null : confirmed ? (
+                    <div className="border-t border-grey-200 pt-4">
+                      {role !== "contractor" ? <ScreenerCta role={role} /> : null}
+                    </div>
+                  ) : hostsQuiz && contractorCanWrite && quiz ? (
+                    <div className="border-t border-grey-200 pt-4">
+                      <GuideCta
+                        tone="ghost"
+                        onClick={() => quiz.onOpenQuiz(true)}
+                      >
+                        {quizStatus === "paused"
+                          ? quizCopy.resumeCta
+                          : "Edit Answers"}
+                      </GuideCta>
+                    </div>
+                  ) : hostsQuiz && officerCanWrite && quiz ? (
+                    <div className="border-t border-grey-200 pt-4">
+                      <GuideCta tone="ghost" onClick={quiz.onEdit}>
+                        {quizCopy.officerEditCta}
+                      </GuideCta>
+                    </div>
+                  ) : null}
+                </div>
+              }
+            >
+              {reviewBannerTitle}
+            </Banner>
+            )
+          )}
+          {showInlineQuizSummary && quiz && (
+            <Banner
+              fold
+              tone={tenantWaitingOnContractor ? "quiet" : "warn"}
+              hint={
+                tenantWaitingOnContractor
+                  ? tenantIdleSoon
+                    ? quizCopy.tenantIdleSoonHint
+                    : quizCopy.tenantIdleHint
+                  : inlineOpenCount > 0
+                    ? `${inlineOpenCount} not answered`
+                    : undefined
+              }
+              subtitle={
+                tenantWaitingOnContractor
+                  ? tenantIdleSoon
+                    ? quizCopy.tenantIdleSoonHint
+                    : quizCopy.tenantIdleHint
+                  : inlineOpenCount > 0
+                    ? `${inlineOpenCount} not answered`
+                    : undefined
+              }
+              footer={
+                officerCanWrite ? (
+                  <GuideCta tone="ghost" onClick={quiz.onEdit}>
+                    {quizCopy.officerEditCta}
+                  </GuideCta>
+                ) : undefined
+              }
+              body={<QuizAnswerReview rows={reviewRows} />}
+            >
+              {tenantWaitingOnContractor
+                ? quizCopy.tenantIdleSoonTitle
+                : reviewBannerTitle}
+            </Banner>
+          )}
+          {(showQuizNudge || showContractorDoneSticky) &&
+            quiz &&
+            nudgeSticky &&
+            nudgeProgress && (
+            <WorksSticky
+              title={nudgeSticky.title}
+              subtitle={nudgeSticky.subtitle}
+              cta={nudgeSticky.cta}
+              answered={nudgeProgress.answered}
+              total={nudgeProgress.total}
+              track={nudgeSticky.track}
+              tip={nudgeSticky.tip}
+              onOpen={() => quiz.onOpenQuiz(true)}
+            />
+          )}
+        </div>
+      )}
     </article>
   );
 }

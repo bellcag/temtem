@@ -1,7 +1,10 @@
 import type { Role } from "@/lib/app-state";
+import { CARD_WHYS } from "@/lib/process-v24-why";
 
 export type LifeSgCard = {
   title?: string;
+  /** What this card is for. From journey briefing, not a task. */
+  why?: string;
   subheader: string | string[];
   how?: string[];
   hideOnlyIf?: boolean;
@@ -20,7 +23,7 @@ const TITLES: Record<string, string> = {
   "Pre-Kickoff::High-Level Design Review": "First design concept",
   "Pre-Kickoff::Confirmation of Meeting Attendees": "KickOff meeting",
   "Kickoff::Requirements & Plan Alignment": "Site meeting plans",
-  "Post-Kickoff::Onboarding Guidelines Shared": "KickOff follow-up pack",
+  "Renovation::Onboarding Guidelines Shared": "KickOff follow-up pack",
   "Post-Kickoff::Confirm Fire Safety Submission Route": "Fire permit route",
   "Design Review::Confirmation of Renovation Plans": "Design pack approval",
   "Permit Application::Permit Advisory & Tenancy Project Selection":
@@ -67,6 +70,9 @@ const TITLES: Record<string, string> = {
   "Opening::Point of Sales Data Reporting": "Point of sale summary",
   "Opening::TOPAZ Account Setup": "TOPAZ account setup",
   "Operations::Regular Servicing Reporting": "Regular service reports",
+  "Operations::Upcoming works": "Upcoming works",
+  "Operations::Later renovation works": "Later renovation works",
+  "Operations::Works after opening": "Works after opening",
   "Operations::Pest Control Reporting": "Pest control reports",
   "Operations::Air Handling Unit Servicing Reporting": "Air handling reports",
   "Operations::Annual Fire Safety Declaration & Training":
@@ -136,7 +142,7 @@ const LEADS: Record<Role, Record<string, string>> = {
     "Pre-Kickoff::High-Level Design Review": "Send first concept",
     "Pre-Kickoff::Confirmation of Meeting Attendees": "Attend when invited",
     "Kickoff::Requirements & Plan Alignment": "Present renovation plans",
-    "Post-Kickoff::Onboarding Guidelines Shared": "Send directory details",
+    "Renovation::Onboarding Guidelines Shared": "Send directory details",
     "Post-Kickoff::Confirm Fire Safety Submission Route": "Confirm fire route",
     "Design Review::Confirmation of Renovation Plans": "Send design pack",
     "Permit Application::Permit Advisory & Tenancy Project Selection":
@@ -181,6 +187,9 @@ const LEADS: Record<Role, Record<string, string>> = {
     "Opening::Point of Sales Data Reporting": "Get sales summary",
     "Opening::TOPAZ Account Setup": "Get TOPAZ account",
     "Operations::Regular Servicing Reporting": "Lodge service reports",
+    "Operations::Upcoming works": "See the list",
+    "Operations::Later renovation works": "Start renovation works",
+    "Operations::Works after opening": "If you need",
     "Operations::Pest Control Reporting": "Submit pest report",
     "Operations::Air Handling Unit Servicing Reporting": "Submit aircon reports",
     "Operations::Annual Fire Safety Declaration & Training":
@@ -211,7 +220,7 @@ const LEADS: Record<Role, Record<string, string>> = {
     "Pre-Kickoff::High-Level Design Review": "Get design clearance",
     "Pre-Kickoff::Confirmation of Meeting Attendees": "Attend when invited",
     "Kickoff::Requirements & Plan Alignment": "Confirm site rules",
-    "Post-Kickoff::Onboarding Guidelines Shared": "Create loading-bay access",
+    "Renovation::Onboarding Guidelines Shared": "Create loading-bay access",
     "Post-Kickoff::Confirm Fire Safety Submission Route": "Ask which applies",
     "Design Review::Confirmation of Renovation Plans": "Get written approval",
     "Permit Application::Permit Advisory & Tenancy Project Selection":
@@ -249,6 +258,9 @@ const LEADS: Record<Role, Record<string, string>> = {
       "Get fire certificates",
     "Renovation::Pre-Opening Inspection": "Attend opening inspection",
     "Opening::Store Opening & Capex Verification": "Fix flagged defects",
+    "Operations::Upcoming works": "See the list",
+    "Operations::Later renovation works": "Start renovation works",
+    "Operations::Works after opening": "Start if needed",
     "Reinstatement::Unit Documents Gathered & Shared": "Use reinstatement pack",
     "Reinstatement::Reinstatement Requirements & Plan Alignment":
       "Attend reinstatement meeting",
@@ -274,7 +286,7 @@ const LEADS: Record<Role, Record<string, string>> = {
     "Pre-Kickoff::High-Level Design Review": "Send to Design",
     "Pre-Kickoff::Confirmation of Meeting Attendees": "Confirm attendees",
     "Kickoff::Requirements & Plan Alignment": "Introduce the room",
-    "Post-Kickoff::Onboarding Guidelines Shared": "Send follow-up email",
+    "Renovation::Onboarding Guidelines Shared": "Send follow-up email",
     "Post-Kickoff::Confirm Fire Safety Submission Route": "Confirm fire route",
     "Design Review::Confirmation of Renovation Plans": "Share design pack",
     "Permit Application::Permit Advisory & Tenancy Project Selection":
@@ -319,6 +331,9 @@ const LEADS: Record<Role, Record<string, string>> = {
     "Opening::Point of Sales Data Reporting": "Pull sales summary",
     "Opening::TOPAZ Account Setup": "Create TOPAZ account",
     "Operations::Regular Servicing Reporting": "Check service reports",
+    "Operations::Upcoming works": "See the list",
+    "Operations::Later renovation works": "Check renovation works",
+    "Operations::Works after opening": "Fill if they need",
     "Operations::Pest Control Reporting": "Check pest report",
     "Operations::Air Handling Unit Servicing Reporting": "Check aircon reports",
     "Operations::Annual Fire Safety Declaration & Training":
@@ -350,6 +365,15 @@ export function cardLead(
   stepName: string,
 ): string | undefined {
   return LEADS[role][`${stageName}::${stepName}`];
+}
+
+export function cardWhy(
+  role: Role,
+  stageName: string,
+  stepName: string,
+): string | undefined {
+  const key = `${stageName}::${stepName}`;
+  return CARD_WHYS[role][key] ?? lifeSgCard(role, stageName, stepName)?.why;
 }
 
 const tenant: Record<string, LifeSgCard> = {
@@ -386,7 +410,6 @@ const tenant: Record<string, LifeSgCard> = {
     subheader: [
       "Go to the first site meeting when invited.",
       "Bring consultant, contractor, and pack drawings.",
-      "Get planned works from your contractor.",
       "Ask IFM which extra permissions you need.",
     ],
   },
@@ -397,7 +420,7 @@ const tenant: Record<string, LifeSgCard> = {
       "Leave with a list of next actions.",
     ],
   },
-  "Post-Kickoff::Onboarding Guidelines Shared": {
+  "Renovation::Onboarding Guidelines Shared": {
     subheader: ["Send store directory details to your Project Officer."],
   },
   "Post-Kickoff::Confirm Fire Safety Submission Route": {
@@ -431,7 +454,7 @@ const tenant: Record<string, LifeSgCard> = {
       subheader: ["Get renovation permits in OneCalendar after review."],
     },
   "Permit Application::Requests / Permissions Outside OneCalendar": {
-    subheader: ["Email IFM for permissions named at KickOff meeting."],
+    subheader: ["Email IFM for permissions named at the pre-renovation briefing."],
     hideOnlyIf: true,
   },
   "Handover::Site Walkthrough, Technical Verification & Handover Sign Off": {
@@ -542,6 +565,19 @@ const tenant: Record<string, LifeSgCard> = {
   "Operations::Regular Servicing Reporting": {
     subheader: ["Lodge service reports in TOPAZ on schedule."],
   },
+  "Operations::Upcoming works": {
+    subheader: ["Read works the Project Officer started for this unit."],
+  },
+  "Operations::Later renovation works": {
+    subheader: [
+      "Answer the planned works quiz for this job.",
+      "Get renovation permits in OneCalendar.",
+    ],
+  },
+  "Operations::Works after opening": {
+    subheader: ["If you need to change the unit."],
+    hideOnlyIf: true,
+  },
   "Operations::Pest Control Reporting": {
     subheader: ["Submit your pest control report in TOPAZ."],
   },
@@ -627,7 +663,6 @@ const contractor: Record<string, LifeSgCard> = {
       "Go to the first site meeting when invited.",
       "Bring tenant, consultant, and pack drawings.",
       "Ask IFM and AES which permits you need.",
-      "Confirm planned works before you go on site.",
     ],
   },
   "Kickoff::Requirements & Plan Alignment": {
@@ -638,8 +673,8 @@ const contractor: Record<string, LifeSgCard> = {
       "Leave with a list of next actions.",
     ],
   },
-  "Post-Kickoff::Onboarding Guidelines Shared": {
-    subheader: ["Create loading-bay access after the KickOff meeting."],
+  "Renovation::Onboarding Guidelines Shared": {
+    subheader: ["Create loading-bay access after the IFM briefing."],
   },
   "Post-Kickoff::Confirm Fire Safety Submission Route": {
     subheader: ["Ask your Qualified Person which fire permit applies."],
@@ -679,7 +714,7 @@ const contractor: Record<string, LifeSgCard> = {
       ],
     },
   "Permit Application::Requests / Permissions Outside OneCalendar": {
-    subheader: ["Email IFM for permissions named at KickOff meeting."],
+    subheader: ["Email IFM for permissions named at the pre-renovation briefing."],
     hideOnlyIf: true,
   },
   "Handover::Site Walkthrough, Technical Verification & Handover Sign Off": {
@@ -745,6 +780,19 @@ const contractor: Record<string, LifeSgCard> = {
   },
   "Opening::Store Opening & Capex Verification": {
     subheader: ["Fix defects from IFM comments before opening."],
+  },
+  "Operations::Upcoming works": {
+    subheader: ["Read the list, or tick if the officer has not yet."],
+  },
+  "Operations::Later renovation works": {
+    subheader: [
+      "Answer the planned works quiz for this job.",
+      "Get renovation permits in OneCalendar.",
+    ],
+  },
+  "Operations::Works after opening": {
+    subheader: ["If you need to change the unit."],
+    hideOnlyIf: true,
   },
   "Reinstatement::Unit Documents Gathered & Shared": {
     subheader: [
@@ -817,7 +865,6 @@ const officer: Record<string, LifeSgCard> = {
     subheader: [
       "Confirm first site meeting details with attendees.",
       "Confirm attendees with Airport Planning and Leasing.",
-      "Read contractor planned works before KickOff meeting.",
     ],
   },
   "Kickoff::Requirements & Plan Alignment": {
@@ -827,9 +874,9 @@ const officer: Record<string, LifeSgCard> = {
       "Note agreed permits from the KickOff meeting.",
     ],
   },
-  "Post-Kickoff::Onboarding Guidelines Shared": {
+  "Renovation::Onboarding Guidelines Shared": {
     subheader: [
-      "Send one email after the first site meeting.",
+      "Send one email after the IFM briefing.",
       "Name extra IFM permissions in that email.",
       "Set up staff access to the unit.",
       "Remind contractor to create loading-bay access.",
@@ -881,7 +928,10 @@ const officer: Record<string, LifeSgCard> = {
     ],
   },
   "Renovation::Integrated Facilities Management Pre-Renovation Briefing": {
-    subheader: ["Check IFM briefed the contractor."],
+    subheader: [
+      "Check IFM briefed the contractor.",
+      "Fill planned works before the IFM briefing.",
+    ],
     hideOnlyIf: true,
   },
   "Renovation::Airport Passes & Hoarding Installation": {
@@ -987,6 +1037,19 @@ const officer: Record<string, LifeSgCard> = {
   },
   "Operations::Regular Servicing Reporting": {
     subheader: ["Check IFM approved service reports in TOPAZ."],
+    hideOnlyIf: true,
+  },
+  "Operations::Upcoming works": {
+    subheader: ["Start a job when the unit needs a refresh or fix."],
+  },
+  "Operations::Later renovation works": {
+    subheader: [
+      "Check the planned works quiz.",
+      "Check renovation permits in OneCalendar.",
+    ],
+  },
+  "Operations::Works after opening": {
+    subheader: ["If they need to change the unit."],
     hideOnlyIf: true,
   },
   "Operations::Pest Control Reporting": {

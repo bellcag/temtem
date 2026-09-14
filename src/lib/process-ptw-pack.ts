@@ -5,6 +5,11 @@ export const PTW_PACK_HOST = "Submit Combined Permit To Work Application";
 
 export const PTW_PACK_TITLE = "Renovation permit application";
 export const PTW_PACK_TYPES_LABEL = "Renovation works permit types";
+export const PTW_PACK_ALWAYS_LEAD = "Additional sub-permits may be required.";
+export const PTW_PACK_ALWAYS_NOTE =
+  "These will be aligned at the IFM pre-renovation briefing, when the works request is opened and the details are discussed.";
+export const PTW_PACK_QUIZ_NOTE =
+  "Anything marked May apply follows the Planned Works Quiz.";
 
 const PTW_PACK_NAMES = new Set([
   "Renovation (Terminal) Permit",

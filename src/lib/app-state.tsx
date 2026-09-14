@@ -63,6 +63,9 @@ export type OfficerScope = { tenant: ManagedTenant | null; unit: Unit } | null;
 type AppState = {
   role: Role;
   setRole: (r: Role) => void;
+  signedIn: boolean;
+  signIn: (r: Role) => void;
+  signOut: () => void;
   unit: Unit;
   setUnit: (u: Unit) => void;
   units: Unit[];
@@ -97,6 +100,15 @@ const Ctx = createContext<AppState | null>(null);
 export function AppStateProvider({ children }: { children: ReactNode }) {
   const [role, setRoleState] = useState<Role>(() => {
     try {
+      const fromUrl = new URLSearchParams(window.location.search).get("role");
+      if (
+        fromUrl === "tenant" ||
+        fromUrl === "contractor" ||
+        fromUrl === "officer"
+      ) {
+        window.localStorage.setItem("tempo:role", fromUrl);
+        return fromUrl;
+      }
       const saved = window.localStorage.getItem("tempo:role");
       if (
         saved === "tenant" ||
@@ -110,10 +122,46 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     }
     return "contractor";
   });
+  const [signedIn, setSignedIn] = useState(() => {
+    try {
+      const fromUrl = new URLSearchParams(window.location.search).get("role");
+      if (
+        fromUrl === "tenant" ||
+        fromUrl === "contractor" ||
+        fromUrl === "officer"
+      ) {
+        window.localStorage.setItem("tempo:signed-in", "1");
+        return true;
+      }
+      return window.localStorage.getItem("tempo:signed-in") === "1";
+    } catch {
+      return false;
+    }
+  });
   const setRole = useCallback((r: Role) => {
     setRoleState(r);
     try {
       window.localStorage.setItem("tempo:role", r);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const signIn = useCallback(
+    (r: Role) => {
+      setRole(r);
+      setSignedIn(true);
+      try {
+        window.localStorage.setItem("tempo:signed-in", "1");
+      } catch {
+        /* ignore */
+      }
+    },
+    [setRole],
+  );
+  const signOut = useCallback(() => {
+    setSignedIn(false);
+    try {
+      window.localStorage.removeItem("tempo:signed-in");
     } catch {
       /* ignore */
     }
@@ -251,6 +299,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       value={{
         role,
         setRole,
+        signedIn,
+        signIn,
+        signOut,
         unit,
         setUnit,
         units: airsideUnits,

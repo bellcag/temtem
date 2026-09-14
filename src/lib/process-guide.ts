@@ -256,6 +256,29 @@ const PERSON_FOR_ROLE: Record<AudienceRole, string> = {
   officer: "Project Officer",
 };
 
+/** Who does this line, named for the person reading. */
+export function actorLabelsForSub(audience: Audience, reader: Role): string[] {
+  if (audience === "shared") return ["Together"];
+  const roles = Array.isArray(audience) ? audience : [audience];
+  return roles.map((r) => (r === reader ? "You" : PERSON_FOR_ROLE[r]));
+}
+
+export type CardActor =
+  | { mixed: false; label: string }
+  | { mixed: true };
+
+/** One party on every line, or mixed. */
+export function cardActor(subs: SubStep[], reader: Role): CardActor {
+  const labels = new Set<string>();
+  for (const sub of subs) {
+    for (const label of actorLabelsForSub(sub.audience, reader)) {
+      labels.add(label);
+    }
+  }
+  if (labels.size === 1) return { mixed: false, label: [...labels][0]! };
+  return { mixed: true };
+}
+
 /** People chips that belong on this task line (login roles only). */
 export function peopleForSubStep(sub: SubStep, people: string[]): string[] {
   if (sub.audience === "shared") return [];

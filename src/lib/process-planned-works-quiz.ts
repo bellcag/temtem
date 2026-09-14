@@ -2,10 +2,19 @@ import type { Role } from "@/lib/app-state";
 import type { PlannedWorkSlug, Step, Unit } from "@/lib/tenancy-data";
 import type { ClassifiedStep } from "@/lib/process-guide";
 
-export const QUIZ_STAGE_NAME = "Pre-Kickoff";
-export const QUIZ_STEP_NAME = "Confirmation of Meeting Attendees";
+export const QUIZ_STAGE_NAME = "Renovation";
+export const QUIZ_STEP_NAME =
+  "Integrated Facilities Management Pre-Renovation Briefing";
 export const KICKOFF_STEP_NAME = "Requirements & Plan Alignment";
 export const KICKOFF_STAGE_NAME = "Kickoff";
+export const PLANNED_WORKS_PROCESS_HREF = "/works";
+export const OPEN_PLANNED_WORKS_EVENT = "tempo:open-planned-works-quiz";
+
+export function requestOpenPlannedWorksQuiz() {
+  window.dispatchEvent(new Event(OPEN_PLANNED_WORKS_EVENT));
+}
+
+export type QuizScope = "fitout" | "operate";
 
 export const NONE_ID = "none";
 export const NOT_SURE_ID = "not-sure";
@@ -339,13 +348,18 @@ export function quizProgress(
   return { answered, total: questions.length };
 }
 
+export function quizIsComplete(state: QuizState, unit: Unit): boolean {
+  const { answered, total } = quizProgress(state, unit);
+  return total > 0 && answered >= total;
+}
+
 /** Contractor in-card / sheet-close write: never leave status as editing. */
 export function settleQuizWrite(state: QuizState, unit: Unit): QuizState {
+  if (!quizHasSavedAnswers(state)) {
+    return { ...state, status: "idle", confirmed: false };
+  }
   if (state.confirmed) {
     return { ...state, status: "done" };
-  }
-  if (!quizHasSavedAnswers(state)) {
-    return { ...state, status: "idle" };
   }
   const { answered, total } = quizProgress(state, unit);
   return {
@@ -355,7 +369,7 @@ export function settleQuizWrite(state: QuizState, unit: Unit): QuizState {
 }
 
 export function quizIsConfirmed(state: QuizState): boolean {
-  return state.confirmed === true;
+  return state.confirmed === true && quizHasSavedAnswers(state);
 }
 
 export function quizCanWrite(role: Role, state: QuizState): boolean {
@@ -366,9 +380,13 @@ export function quizCanWrite(role: Role, state: QuizState): boolean {
 
 /** Officer KickOff lock. Process becomes source of truth for this unit. */
 export function confirmPlannedWorks(state: QuizState): QuizState {
+  const answers = completeAnswers(state.answers);
+  if (!quizHasSavedAnswers({ ...state, answers })) {
+    return { status: "idle", answers, confirmed: false };
+  }
   return {
     status: "done",
-    answers: completeAnswers(state.answers),
+    answers,
     confirmed: true,
   };
 }
@@ -502,6 +520,15 @@ export function toggleQuestionOption(
     status: "editing",
     answers: { ...answers, [questionId]: next },
   };
+}
+
+export function questionHasAnswer(
+  answer: QuestionAnswer | undefined,
+): boolean {
+  if (!answer || answer.kind === "unanswered") return false;
+  if (answer.kind === "none" || answer.kind === "not-sure") return true;
+  if (answer.kind === "selected") return answer.slugs.length > 0;
+  return answer.on.length > 0;
 }
 
 export function isOptionOn(
@@ -656,34 +683,143 @@ export function unansweredChip(count: number): string {
   return count > 0 ? "Incomplete" : "";
 }
 
-/** One-line sticky: empty / in progress / short done summary. */
+export type QuizStickyTone = "start" | "warn" | "quiet";
+
+export type QuizStickyTrackStep = {
+  label: string;
+  state: "done" | "next" | "ahead";
+};
+
+/** Sticky: empty / in progress / short done summary. */
 export function quizStickyCopy(
   state: QuizState,
   unit: Unit,
-): { title: string; cta: string } {
-  if (!quizHasSavedAnswers(state)) {
-    return { title: quizCopy.stickyIdleTitle, cta: quizCopy.stickyIdleCta };
-  }
+  role: Role = "contractor",
+  scope: QuizScope = "fitout",
+): {
+  title: string;
+  subtitle: string;
+  cta: string;
+  tone: QuizStickyTone;
+  count?: string;
+  track?: QuizStickyTrackStep[];
+  tip?: string;
+} {
+  const copy = quizUiCopy(scope);
   const progress = quizProgress(state, unit);
-  if (progress.answered >= progress.total) {
-    const selected = quizReviewRows(state, unit)
-      .filter((row) => row.flag === "selected")
-      .map((row) => row.topic);
-    let title = quizCopy.stickyDoneText;
-    if (selected.length === 1) title = selected[0];
-    else if (selected.length === 2) title = `${selected[0]} · ${selected[1]}`;
-    else if (selected.length > 2) {
-      title = `${selected[0]} · ${selected.length - 1} more`;
+  const count = `${progress.answered} of ${progress.total}`;
+  if (role === "officer" && !quizHasSavedAnswers(state)) {
+    return {
+      title: copy.stickyIdleTitle,
+      subtitle: copy.bannerOfficer,
+      cta: copy.stickyIdleCta,
+      tone: "start",
+    };
+  }
+  if (role === "tenant" || role === "officer") {
+    const title =
+      role === "officer"
+        ? copy.stickyOfficerTitle
+        : copy.stickyTenantTitle;
+    const subtitle =
+      role === "officer" ? copy.bannerOfficer : copy.bannerTenant;
+    if (!quizHasSavedAnswers(state)) {
+      return {
+        title,
+        subtitle,
+        cta: copy.reviewCta,
+        tone: "start",
+      };
     }
-    return { title, cta: quizCopy.stickyEditCta };
+    if (progress.answered >= progress.total) {
+      return {
+        title,
+        subtitle,
+        cta: copy.reviewCta,
+        tone: "quiet",
+      };
+    }
+    return {
+      title,
+      subtitle,
+      cta: copy.reviewCta,
+      tone: "warn",
+      count,
+    };
+  }
+  const subtitle = copy.stickyIdleSub;
+  if (!quizHasSavedAnswers(state)) {
+    return {
+      title: copy.stickyIdleTitle,
+      subtitle,
+      cta: copy.stickyIdleCta,
+      tone: "start",
+    };
+  }
+  if (progress.answered >= progress.total) {
+    return {
+      title: copy.stickyDoneTitle,
+      subtitle: copy.stickyDoneNext,
+      cta: copy.stickyEditCta,
+      tone: "quiet",
+      tip: copy.stickyDoneIntro,
+      track:
+        scope === "operate"
+          ? [
+              { label: "Works", state: "done" },
+              { label: "Permit", state: "next" },
+            ]
+          : [
+              { label: "Works", state: "done" },
+              { label: "Briefing", state: "next" },
+              { label: "Permit", state: "ahead" },
+            ],
+    };
   }
   if (progress.answered > 0) {
     return {
-      title: `${progress.answered} of ${progress.total} answered`,
-      cta: quizCopy.stickyEditCta,
+      title: copy.stickyIdleTitle,
+      subtitle,
+      cta: copy.stickyEditCta,
+      tone: "warn",
+      count,
     };
   }
-  return { title: quizCopy.stickyStartedTitle, cta: quizCopy.stickyEditCta };
+  return {
+    title: copy.stickyStartedTitle,
+    subtitle,
+    cta: copy.stickyEditCta,
+    tone: "start",
+  };
+}
+
+/** Contractor saved two of five — tenant / contractor / officer landing at halfway. */
+export function midwayDemoQuiz(): QuizState {
+  return {
+    status: "paused",
+    confirmed: false,
+    answers: completeAnswers({
+      ...EMPTY_ANSWERS,
+      scope: { kind: "selected", slugs: ["large-scale-renovation"] },
+      fire: { kind: "none" },
+    }),
+  };
+}
+
+/** Contractor saved all five — landing after Planned works is complete, not yet locked. */
+export function filledDemoQuiz(): QuizState {
+  return {
+    status: "done",
+    confirmed: false,
+    answers: completeAnswers({
+      ...EMPTY_ANSWERS,
+      scope: { kind: "selected", slugs: ["large-scale-renovation"] },
+      fire: { kind: "none" },
+      structure: { kind: "selected", slugs: ["above-ceiling-works"] },
+      mep: { kind: "selected", slugs: ["mep-changes"] },
+      external: { kind: "none" },
+    }),
+  };
 }
 
 export function answerSummaryLines(
@@ -731,9 +867,14 @@ export function answerSummaryLines(
 
 export type QuizEditMode = "fill" | "correct" | "read";
 
-export function quizEditMode(role: Role): QuizEditMode {
+export function quizEditMode(role: Role, state?: QuizState): QuizEditMode {
   if (role === "contractor") return "fill";
-  if (role === "officer") return "correct";
+  if (role === "officer") {
+    if (state && !quizHasSavedAnswers(state) && !quizIsConfirmed(state)) {
+      return "fill";
+    }
+    return "correct";
+  }
   return "read";
 }
 
@@ -743,13 +884,26 @@ export function quizCardCopy(
   _summary: string[],
   kickoffSoon: boolean,
   hasAnswers = status === "done",
+  confirmed = false,
 ): { subheader: string[]; how: string[] } {
   const mode = quizEditMode(role);
+  if (role === "officer" && !hasAnswers && !confirmed) {
+    return {
+      subheader: quizCopy.officerFillSubheader,
+      how: quizCopy.officerFillHow,
+    };
+  }
   if (mode === "read") {
-    if (hasAnswers) {
+    if (hasAnswers && confirmed) {
       return {
         subheader: quizCopy.tenantDoneIntro,
         how: quizCopy.tenantDoneHow,
+      };
+    }
+    if (hasAnswers) {
+      return {
+        subheader: quizCopy.tenantFilledIntro,
+        how: quizCopy.tenantFilledHow,
       };
     }
     return {
@@ -781,7 +935,7 @@ export function quizCardCopy(
   return {
     subheader: quizCopy.entrySubheader,
     how: kickoffSoon
-      ? [...quizCopy.entryHow, "Kick-off is soon. Still start."]
+      ? [...quizCopy.entryHow, "Briefing is soon. Still start."]
       : quizCopy.entryHow,
   };
 }
@@ -797,7 +951,7 @@ export function makeQuizClassifiedStep(role: Role): ClassifiedStep {
       contractor:
         "Answer five questions about this job. Select all that apply. This does not submit a permit.",
       officer:
-        "The contractor answers five questions about the works. Confirm or correct them at kick-off.",
+        "Answer five questions about this job, or correct the contractor. This does not submit a permit.",
     },
     subSteps: [
       {
@@ -808,7 +962,7 @@ export function makeQuizClassifiedStep(role: Role): ClassifiedStep {
           tenant:
             "Your contractor is confirming which works apply. You do not fill this.",
           officer:
-            "The contractor is confirming which works apply. Correct them at kick-off if they are wrong.",
+            "Fill what applies, or correct the contractor at the IFM briefing.",
         },
       },
     ],
@@ -835,6 +989,10 @@ export function injectPlannedWorksQuiz(
 
 export function quizStorageKey(unitId: string) {
   return `tempo:v16:planned-works:${unitId}`;
+}
+
+export function operateQuizStorageKey(unitId: string) {
+  return `tempo:v23:operate-works:${unitId}`;
 }
 
 function isQuestionId(value: string): value is QuestionId {
@@ -870,9 +1028,9 @@ function parseAnswer(raw: unknown): QuestionAnswer {
   return UNANSWERED;
 }
 
-export function readQuizState(unitId: string): QuizState {
+function readQuizAt(key: string): QuizState {
   try {
-    const raw = window.localStorage.getItem(quizStorageKey(unitId));
+    const raw = window.localStorage.getItem(key);
     if (!raw) return EMPTY_QUIZ;
     const parsed = JSON.parse(raw) as QuizState;
     if (
@@ -899,8 +1057,28 @@ export function readQuizState(unitId: string): QuizState {
   }
 }
 
+export function readQuizState(unitId: string): QuizState {
+  return readQuizAt(quizStorageKey(unitId));
+}
+
+export function readOperateQuizState(unitId: string): QuizState {
+  return readQuizAt(operateQuizStorageKey(unitId));
+}
+
+export const QUIZ_CHANGED_EVENT = "tempo:quiz-changed";
+
 export function writeQuizState(unitId: string, state: QuizState) {
   window.localStorage.setItem(quizStorageKey(unitId), JSON.stringify(state));
+  window.dispatchEvent(
+    new CustomEvent(QUIZ_CHANGED_EVENT, { detail: { unitId } }),
+  );
+}
+
+export function writeOperateQuizState(unitId: string, state: QuizState) {
+  window.localStorage.setItem(operateQuizStorageKey(unitId), JSON.stringify(state));
+  window.dispatchEvent(
+    new CustomEvent(QUIZ_CHANGED_EVENT, { detail: { unitId, scope: "operate" } }),
+  );
 }
 
 export const quizCopy = {
@@ -923,58 +1101,75 @@ export const quizCopy = {
     "Come back when you know more.",
   ],
   pausedHow: [
-    "Fill remaining answers before KickOff meeting.",
+    "Fill remaining answers before the IFM briefing.",
   ],
-  bannerContractorPaused: "Fill remaining answers before KickOff meeting.",
+  bannerContractorPaused: "Fill remaining answers before the IFM briefing.",
   contractorDoneIntro: [
-    "These are the works you confirmed.",
+    "Answers saved.",
+    "The Application Screener uses these to build your permit checklist.",
   ],
   resultsHow: [
     "Confirm remaining answers before you go on site.",
   ],
   reviewLabel: "Works that apply",
-  reviewLabelOfficerPending: "Contractor answers so far",
+  reviewLabelOfficerPending: "Unconfirmed works",
+  reviewLabelTenantPending: "Works for IFM briefing",
   reviewLabelOfficerConfirm: "Confirm Planned works",
   reviewLabelOfficerAgreed: "Agreed works",
+  reviewLabelContractorAgreed: "View agreed works",
+  reviewLabelTenantAgreed: "Read agreed works",
   tenantWaitingSubheader: [
     "Get planned works from your contractor.",
   ],
+  tenantIdleSoonTitle: "Planned works",
+  tenantIdleHint: "Your contractor answers five questions before the IFM briefing.",
+  tenantIdleSoonHint: "Ask your contractor before the IFM briefing.",
   tenantWaitingHow: [],
+  tenantFilledLine: "Read the works noted from your contractor.",
+  tenantFilledIntro: [
+    "Read the works noted from your contractor.",
+  ],
+  tenantFilledHow: ["Align these at the IFM briefing."],
+  tenantAlignHint: "Align this at the IFM briefing.",
   tenantDoneIntro: [
-    "Read the works agreed at KickOff meeting.",
+    "Read the works agreed at the IFM briefing.",
   ],
   tenantDoneHow: [],
   officerWaitingSubheader: [
-    "Review planned works at the first site meeting.",
+    "Review planned works at the IFM briefing.",
   ],
   officerWaitingHow: [],
+  officerFillSubheader: [
+    "Answer five questions about this job. Select all that apply.",
+  ],
+  officerFillHow: [],
   officerEditingHow: [
-    "Correct what applies. None of these and Not sure yet are exclusive.",
+    "Correct what applies. None of these is exclusive.",
   ],
   officerDoneIntro: [
-    "Confirm the works agreed at KickOff meeting.",
+    "Confirm the works agreed at the IFM briefing.",
   ],
   officerDoneHow: [
-    "Note the permits agreed at KickOff meeting.",
+    "Note the permits agreed at the IFM briefing.",
   ],
   officerGuideHow: [
-    "Walk unanswered items at the first site meeting.",
+    "Walk unanswered items at the IFM briefing.",
   ],
   kickoffCorrection: [
-    "Update Planned works to match KickOff meeting.",
+    "Update Planned works to match the IFM briefing.",
   ],
   kickoffConfirm: [
-    "Note agreed permits at the KickOff meeting.",
+    "Note agreed permits at the IFM briefing.",
   ],
-  bannerContractorTitle: "Confirm works before KickOff",
+  bannerContractorTitle: "Confirm works before IFM briefing",
   bannerContractor: "Tick what applies on this job.",
   bannerTenantTitle: "Planned works",
   bannerTenant:
-    "Ask your contractor to confirm the works on this job.",
+    "Ask your contractor or Project Officer to confirm the works on this job.",
   bannerOfficerTitle: "Planned works",
-  bannerOfficer: "Confirm the works at the KickOff meeting.",
+  bannerOfficer: "Fill this before the IFM briefing.",
   resultsLabel: "Renovation works permits",
-  resultsCaveat: "Confirm agreed permits at the KickOff meeting.",
+  resultsCaveat: "Confirm agreed permits at the IFM briefing.",
   resultsMainOnly: "No extra permits for these works.",
   resultsAlwaysLabel: "Always",
   alwaysApplyLabel: "Always apply",
@@ -998,19 +1193,52 @@ export const quizCopy = {
   resultsExtrasLabel: "Also if these works apply",
   kickoffPermitsLabel: "Likely renovation works permits",
   kickoffPermitsLabelAgreed: "Agreed renovation works permits",
+  officerEmptyCta: "Fill answers",
   officerConfirmCta: "Confirm answers",
+  officerConfirmSheetTitle: "Agree these answers at the IFM briefing.",
+  officerBlockedTitle: (n: number) =>
+    n === 1 ? "1 item not decided." : `${n} items not decided.`,
+  officerBlockedHint:
+    "Edit answers before you lock the Application Screener checklist.",
+  officerGateTitle: "Open items are not locked yet",
+  officerGateBody: (n: number) =>
+    n === 1
+      ? "1 item is still not decided. Edit it before you lock the Application Screener checklist."
+      : `${n} items are still not decided. Edit them before you lock the Application Screener checklist.`,
+  officerGateEdit: "Edit answers",
+  officerLockSuccessTitle: "Answers confirmed.",
+  officerLockSuccessBody:
+    "The Application Screener uses these to build the permit checklist.",
   officerEditCta: "Edit answers",
   officerUpdateCta: "Update answers",
+  officerEditGateTitle: "Edits change the Application Screener",
+  officerEditGateBody:
+    "Each Planned works answer feeds the Application Screener. Confirm this edit is correct before you change it.",
+  officerEditGateCta: "Edit answers",
+  officerEditGateCancel: "Cancel",
+  screenerCtaContractor: "Open Application Screener",
+  screenerCtaOfficer: "Open Application Screener",
+  screenerCtaTenant: "Read Application Screener",
+  screenerBannerTitle: "Attach documents for the permits agreed at the IFM briefing.",
+  screenerBannerSub: "Each locked permit requires its own supporting documents.",
+  screenerTipContractor:
+    "This is the pack for permits locked at the IFM briefing. Attach what each permit needs before you submit.",
   officerCancelCta: "Cancel",
-  contractorLockedLine: "Use the permits agreed at KickOff meeting.",
-  confirmedCaveatTenant: "Check the permits agreed at KickOff meeting.",
-  confirmedCaveatContractor: "Use the permits agreed at KickOff meeting.",
-  confirmedCaveatOfficer: "Check the permits from KickOff meeting.",
+  contractorLockedLine: "Use the permits agreed at the IFM briefing.",
+  confirmedCaveatTenant: "Check the permits agreed at the IFM briefing.",
+  confirmedCaveatContractor: "Use the permits agreed at the IFM briefing.",
+  confirmedCaveatOfficer: "Check the permits from the IFM briefing.",
+  officerUpdateNote:
+    "Align this update with stakeholders before you change answers. It changes the permit application pack.",
   kickoffConfirmLabel: "Confirm planned works",
   kickoffUpdateLabel: "Update planned works",
   possibleChip: "May apply",
   tenantPossibleChip: "May apply",
   officerPossibleChip: "May apply",
+  possibleChipHint: "Depends on your Planned Works Quiz answers.",
+  tenantPossibleChipHint:
+    "Depends on your contractor’s Planned Works Quiz answers.",
+  officerPossibleChipHint: "Depends on Planned Works Quiz answers.",
   confirmedChip: "Applies",
   possibleSection: "Not confirmed yet",
   possibleLine:
@@ -1018,24 +1246,105 @@ export const quizCopy = {
   tenantPossibleLine:
     "Ask your contractor to confirm this step.",
   officerPossibleLine:
-    "Agree these answers in this meeting.",
-  officerReadLine: "Read these before the KickOff meeting.",
+    "Agree these answers at the IFM briefing.",
+  officerPossibleEmptyLine:
+    "Unconfirmed until Planned works is filled.",
+  officerReadLine: "Look through Planned works answers before the IFM briefing.",
   officerConfirmChip: "Confirm now",
   openHintContractor: " — confirm before you go on site",
-  openHintOfficer: " — walk this at the first site meeting",
+  openHintOfficer: " — walk this at the IFM briefing",
   accordionHint: "Confirm before you go on site.",
   confirmCta: "Confirm works",
   thisAppliesCta: "This Applies",
   doesNotApplyCta: "Doesn't Apply",
-  possibleDecideLine: "Confirm if this step applies.",
-  stickyIdleTitle: "Confirm works before KickOff",
+  possibleDecideLine: "This may apply from your answers.",
+  possibleDecideSub:
+    "Bring this to the IFM briefing. It may change when the project officer confirms it with you and other stakeholders there.",
+  packDecideLine: "Possible permits from your answers.",
+  packDecideSub:
+    "This list helps the IFM briefing. It may change when the project officer confirms it with you and other stakeholders there.",
+  stickyIdleTitle: "Planned Works Quiz",
+  stickyTenantTitle: "Planned Works Quiz",
+  stickyOfficerTitle: "Planned Works Quiz",
+  stickyIdleSub: "Tick what applies on this job.",
+  stickyIntro: "See which steps and sub-permits may apply to this job.",
   stickyIdleCta: "Confirm Works",
   stickyEditCta: "Edit",
   stickyStartedTitle: "Answers started",
-  stickyDoneText: "Answers saved",
+  stickyDoneText: "Works plan answers saved",
+  stickyDoneTitle: "Works ready for IFM briefing",
+  stickyDoneNext: "Agree these answers at the IFM briefing.",
+  stickyDoneIntro:
+    "The IFM briefing locks the permit pack. Permits are approved after you apply in OneCalendar.",
   sheetTitle: "Planned works",
   sheetSaveCta: "Save Answers",
   correctCta: "Correct answers",
   reviewCta: "See planned works",
   kickoffConfirmCta: "Confirm planned works",
 };
+
+const OPERATE_QUIZ_COPY: Partial<typeof quizCopy> = {
+  entrySubheader: [
+    "Answer five questions about these works.",
+    "Only if you need to change the unit after opening.",
+  ],
+  entryHow: ["Tick what applies on these works."],
+  pausedHow: ["Fill remaining answers when you know more."],
+  bannerContractorPaused: "Fill remaining answers for these works.",
+  contractorDoneIntro: [
+    "Answers saved.",
+    "Use these to see which permits may apply.",
+  ],
+  resultsHow: ["Confirm remaining answers before you apply."],
+  reviewLabelTenantPending: "Works noted",
+  tenantWaitingSubheader: [
+    "Get answers from your contractor if you need works after opening.",
+  ],
+  tenantIdleHint:
+    "Your contractor answers five questions if you need works after opening.",
+  tenantIdleSoonHint: "Ask your contractor if you need works after opening.",
+  tenantFilledHow: [],
+  tenantDoneIntro: ["Read the works agreed for this job."],
+  officerWaitingSubheader: [
+    "Review answers if they need works after opening.",
+  ],
+  officerDoneIntro: ["Confirm the works for this job."],
+  officerDoneHow: ["Note the permits that may apply."],
+  officerGuideHow: ["Walk unanswered items before they apply."],
+  officerReadLine: "Look through answers for these works.",
+  officerPossibleLine: "Agree these answers for this job.",
+  officerPossibleEmptyLine: "Unconfirmed until these works are filled.",
+  bannerTenant:
+    "Ask your contractor or Project Officer if you need works after opening.",
+  bannerOfficer:
+    "Fill this if they need works after opening, or the contractor can.",
+  resultsCaveat: "Confirm agreed permits before you apply.",
+  officerConfirmSheetTitle: "Agree these answers for this job.",
+  officerBlockedHint: "Edit answers before you lock this job’s works.",
+  officerGateBody: (n: number) =>
+    n === 1
+      ? "1 item is still not decided. Edit it before you lock these answers."
+      : `${n} items are still not decided. Edit them before you lock these answers.`,
+  officerLockSuccessBody:
+    "These answers stay on this job. They do not change the first fit-out checklist.",
+  officerEditGateTitle: "Edits change this job’s answers",
+  officerEditGateBody:
+    "These answers are for works after opening. They do not change the first fit-out Application Screener.",
+  contractorLockedLine: "Use the permits that apply to these works.",
+  confirmedCaveatTenant: "Check the permits that apply to these works.",
+  confirmedCaveatContractor: "Use the permits that apply to these works.",
+  confirmedCaveatOfficer: "Check the permits from these answers.",
+  possibleDecideSub:
+    "This may change when the project officer confirms it.",
+  packDecideSub:
+    "This list may change when the project officer confirms it.",
+  stickyDoneTitle: "Works answers saved",
+  stickyDoneNext: "Confirm these answers, then apply for any permits that apply.",
+  stickyDoneIntro: "These answers are for this job only.",
+  reviewCta: "See these works",
+};
+
+export function quizUiCopy(scope: QuizScope = "fitout") {
+  if (scope !== "operate") return quizCopy;
+  return { ...quizCopy, ...OPERATE_QUIZ_COPY };
+}

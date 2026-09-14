@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Link } from "react-router-dom";
+import { Link, useNavigate } from "react-router-dom";
 import {
   Sparkles,
   ArrowRight,
@@ -7,6 +7,7 @@ import {
   BadgeCheck,
   Workflow,
   FileText,
+  Search,
 } from "lucide-react";
 import { useApp } from "@/lib/app-state";
 import {
@@ -16,6 +17,19 @@ import {
   CONTRACTOR,
   PHASES,
 } from "@/lib/tenancy-data";
+import { dashboardSearchHits } from "@/lib/dashboard-search";
+import { PHASE_INTRO } from "@/lib/process-v24-doors";
+import { WORKS_HREF } from "@/lib/process-works-jobs";
+import {
+  ContextStrip,
+  MetaPair,
+  MetaSep,
+} from "@/components/dls/ContextStrip";
+import { DocRow } from "@/components/dls/DocRow";
+import { PhaseCard } from "@/components/dls/PhaseCard";
+import { SearchField } from "@/components/dls/SearchField";
+import { SearchHitRow } from "@/components/dls/SearchHitRow";
+import reviewsIcon from "@/assets/figma/reviews.svg";
 
 function greeting() {
   const h = new Date().getHours();
@@ -41,7 +55,7 @@ export function DashboardPage() {
   const subtitle = isOfficer
     ? OFFICER.role
     : isContractor
-      ? CONTRACTOR.company
+      ? CONTRACTOR.role
       : TENANT.company;
 
   const suggested = isOfficer
@@ -88,51 +102,61 @@ export function DashboardPage() {
       </header>
 
       {!isOfficer && (
-        <div className="mt-6 rounded-[var(--radius-2xl)] border border-grey-100 bg-white px-5 py-4">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
-            Unit profile
-          </div>
-          <div className="mt-1.5 flex flex-wrap items-center gap-x-4 gap-y-1.5 text-sm">
-            <Meta label="Unit" value={ctxUnit.unitNo} />
-            <Sep />
-            <Meta label="Terminal" value={ctxUnit.terminal} />
-            <Sep />
-            <Meta label="Tenancy" value={ctxUnit.tenancyType} />
-            <Sep />
-            <Meta label="Zone" value="Airside" />
-          </div>
+        <div className="mt-6">
+          <ContextStrip kicker="Unit profile">
+            <div className="flex flex-wrap items-center gap-x-4 gap-y-1.5">
+              <MetaPair label="Unit" value={ctxUnit.unitNo} />
+              <MetaSep />
+              <MetaPair label="Terminal" value={ctxUnit.terminal} />
+              <MetaSep />
+              <MetaPair label="Tenancy" value={ctxUnit.tenancyType} />
+              <MetaSep />
+              <MetaPair label="Zone" value="Airside" />
+            </div>
+          </ContextStrip>
         </div>
       )}
 
       {isOfficer && (
-        <div className="mt-6 rounded-[var(--radius-2xl)] border border-grey-100 bg-white px-5 py-4">
-          <div className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
-            Portfolio context
-          </div>
-          <p className="mt-1.5 text-sm text-grey-700">
+        <div className="mt-6">
+          <ContextStrip kicker="Portfolio context">
             {isUnscoped
-              ? "No unit scoped — Process defaults to Full process. Select terminal and tenancy in the sidebar."
+              ? "No unit scoped. Process shows the full map until you pick a unit on Process."
               : `Scoped to ${ctxUnit.unitNo} · ${ctxUnit.terminal} · ${ctxUnit.tenancyType} · Airside`}
-          </p>
+          </ContextStrip>
         </div>
       )}
 
-      <button
-        type="button"
-        onClick={() => openAssistant(suggested)}
-        className="group mt-8 flex w-full items-center gap-4 rounded-[var(--radius-2xl)] border border-grey-100 bg-white p-5 text-left transition hover:border-purple-300"
-      >
-        <div className="grid h-11 w-11 shrink-0 place-items-center rounded-[var(--radius-sm)] bg-purple-600 text-white">
-          <Sparkles className="h-5 w-5" />
+      <section className="mt-8">
+        <div className="mb-3 flex items-center gap-2">
+          <Workflow className="h-4 w-4 text-purple-600" />
+          <h2>Process overview</h2>
         </div>
-        <div className="min-w-0 flex-1">
-          <div className="text-[11px] font-bold uppercase tracking-wider text-purple-600">
-            Ask the assistant
-          </div>
-          <div className="mt-0.5 text-base font-bold text-black">{suggested}</div>
+        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
+          {PHASES.map((p, i) => (
+            <PhaseCard
+              key={p.id}
+              to={`/process?phase=${p.id}`}
+              title={p.name}
+              lead={PHASE_INTRO[p.id]}
+              index={i}
+            />
+          ))}
         </div>
-        <ArrowRight className="h-5 w-5 text-grey-400 transition group-hover:translate-x-0.5 group-hover:text-purple-600" />
-      </button>
+        <div className="mt-4 flex justify-end">
+          <Link
+            to="/process"
+            className="inline-flex h-10 items-center justify-center gap-1.5 rounded-[var(--radius-sm)] bg-purple-600 px-4 text-sm leading-[18px] font-bold text-white hover:bg-purple-700"
+          >
+            Open Process <ArrowRight className="h-4 w-4" />
+          </Link>
+        </div>
+      </section>
+
+      <DashboardSearch
+        suggested={suggested}
+        onAsk={(seed) => openAssistant(seed)}
+      />
 
       <div className="mt-8 grid gap-6 md:grid-cols-2">
         <DocBlock
@@ -155,59 +179,106 @@ export function DashboardPage() {
         />
       </div>
 
-      <section className="mt-8">
-        <div className="mb-3 flex items-center gap-2">
-          <Workflow className="h-4 w-4 text-purple-600" />
-          <h2>Process overview</h2>
-        </div>
-        <div className="grid gap-3 md:grid-cols-2 lg:grid-cols-4">
-          {PHASES.map((p, i) => (
+      <section className="mt-8 rounded-[var(--radius-2xl)] border border-grey-100 bg-grey-25 p-5">
+        <div className="flex items-start gap-3">
+          <span className="grid size-10 shrink-0 place-items-center rounded-full bg-purple-100">
+            <img src={reviewsIcon} alt="" className="size-5" aria-hidden />
+          </span>
+          <div className="min-w-0 flex-1">
+            <h2 className="text-lg font-black text-black">Works</h2>
+            <p className="mt-1 text-sm leading-[18px] text-grey-700">
+              {isOfficer
+                ? "Start or open jobs for this unit. Separate from the Process guide."
+                : isContractor
+                  ? "Tick the agreed list for this unit. Separate from the Process guide."
+                  : "Read the agreed list for this unit. Separate from the Process guide."}
+            </p>
             <Link
-              key={p.id}
-              to={`/process-v19?phase=${p.id}`}
-              className="group rounded-[var(--radius-2xl)] border border-grey-100 bg-white p-5 transition hover:border-purple-300"
+              to={WORKS_HREF}
+              className="mt-3 inline-flex items-center gap-1.5 text-sm font-bold text-purple-600 hover:text-purple-700"
             >
-              <div className="flex items-center gap-2 text-[11px] font-bold uppercase tracking-wider text-grey-500">
-                <span className="grid h-5 w-5 place-items-center rounded-full bg-purple-100 text-[10px] text-purple-700">
-                  {i + 1}
-                </span>
-                Phase {i + 1}
-              </div>
-              <div className="mt-2 text-lg font-black text-black group-hover:text-purple-700">
-                {p.name}
-              </div>
-              <p className="mt-1.5 text-sm leading-relaxed text-grey-500">
-                {p.description}
-              </p>
+              See works <ArrowRight className="h-4 w-4" />
             </Link>
-          ))}
-        </div>
-        <div className="mt-4 flex justify-end">
-          <Link
-            to="/process-v19"
-            className="inline-flex items-center gap-1.5 rounded-[var(--radius-sm)] bg-purple-600 px-4 py-2 text-sm font-bold text-white hover:bg-purple-700"
-          >
-            View Full Process <ArrowRight className="h-4 w-4" />
-          </Link>
+          </div>
         </div>
       </section>
     </div>
   );
 }
 
-function Meta({ label, value }: { label: string; value: string }) {
+function DashboardSearch({
+  suggested,
+  onAsk,
+}: {
+  suggested: string;
+  onAsk: (seed: string) => void;
+}) {
+  const navigate = useNavigate();
+  const [query, setQuery] = useState("");
+  const [open, setOpen] = useState(false);
+  const hits = useMemo(() => dashboardSearchHits(query), [query]);
+  const typed = query.trim();
+  const askSeed = typed || suggested;
+
+  const ask = () => {
+    onAsk(askSeed);
+    setOpen(false);
+  };
+
   return (
-    <div>
-      <span className="mr-1.5 text-[11px] uppercase tracking-wider text-grey-400">
-        {label}
-      </span>
-      <span className="font-bold text-black">{value}</span>
+    <div className="relative mt-6">
+      <form
+        role="search"
+        onSubmit={(e) => {
+          e.preventDefault();
+          ask();
+        }}
+      >
+        <SearchField
+          id="dashboard-search"
+          label="Ask the assistant or find a step"
+          placeholder={suggested}
+          value={query}
+          onChange={(e) => {
+            setQuery(e.target.value);
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+          onClear={() => {
+            setQuery("");
+            setOpen(true);
+          }}
+          leading={<Sparkles className="h-5 w-5" aria-hidden />}
+        />
+      </form>
+      {open && (
+        <div className="absolute inset-x-0 top-full z-40 mt-2 overflow-hidden rounded-[var(--radius-xl)] border border-grey-100 bg-white shadow-[var(--shadow-light-bg)]">
+          <ul>
+            <li>
+              <SearchHitRow
+                title={askSeed}
+                hint="Ask the assistant"
+                icon={<Sparkles className="h-4 w-4 text-purple-600" />}
+                onClick={ask}
+              />
+            </li>
+            {typed
+              ? hits.map((hit) => (
+                  <li key={hit.id} className="border-t border-grey-100">
+                    <SearchHitRow
+                      title={hit.title}
+                      hint={hit.hint}
+                      icon={<Search className="h-4 w-4 text-grey-400" />}
+                      onClick={() => navigate(hit.to)}
+                    />
+                  </li>
+                ))
+              : null}
+          </ul>
+        </div>
+      )}
     </div>
   );
-}
-
-function Sep() {
-  return <span className="h-3 w-px bg-grey-100" />;
 }
 
 function DocBlock({
@@ -238,21 +309,12 @@ function DocBlock({
         <ul className="divide-y divide-grey-75">
           {items.map((d) => (
             <li key={d.id}>
-              <Link
+              <DocRow
                 to={`/documents/${d.id}`}
-                className="flex items-start gap-3 px-5 py-3.5 hover:bg-grey-50"
-              >
-                <FileText className="mt-0.5 h-4 w-4 shrink-0 text-purple-600" />
-                <div className="min-w-0 flex-1">
-                  <div className="truncate text-sm font-bold text-black">
-                    {d.name}
-                  </div>
-                  <div className="mt-0.5 text-xs text-grey-500">
-                    {d.type} · {d.updatedAt}
-                    {d.status ? ` · ${d.status}` : ""}
-                  </div>
-                </div>
-              </Link>
+                title={d.name}
+                meta={`${d.type} · ${d.updatedAt}${d.status ? ` · ${d.status}` : ""}`}
+                icon={<FileText className="h-4 w-4" />}
+              />
             </li>
           ))}
         </ul>

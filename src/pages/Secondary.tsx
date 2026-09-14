@@ -127,7 +127,7 @@ export function DocumentDetailPage() {
             Open PDF
           </a>
           <Link
-            to="/process-v19"
+            to="/process-v20?phase=setup"
             className="inline-flex rounded-[var(--radius-sm)] bg-purple-600 px-4 py-2 text-sm font-bold text-white hover:bg-purple-700"
           >
             Back to Process
@@ -214,30 +214,3 @@ export function ContactsPage() {
   );
 }
 
-export function ScreenerDraftsPage() {
-  return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
-      <h1>Screener · Drafts</h1>
-      <p className="mt-1 text-grey-500">
-        Lightweight stub — continue Application Screener drafts here in a later
-        pass.
-      </p>
-      <div className="mt-6 rounded-[var(--radius-2xl)] border border-grey-100 bg-white p-6 text-sm text-grey-500">
-        No drafts in this MVP build. Use Process → Permit Application for
-        guidance on document packs.
-      </div>
-    </div>
-  );
-}
-
-export function ScreenerHistoryPage() {
-  return (
-    <div className="mx-auto max-w-6xl px-6 py-10">
-      <h1>Screener · History</h1>
-      <p className="mt-1 text-grey-500">Past screening runs (stub).</p>
-      <div className="mt-6 rounded-[var(--radius-2xl)] border border-grey-100 bg-white p-6 text-sm text-grey-500">
-        History list deferred — Process P0 is the focus of this pass.
-      </div>
-    </div>
-  );
-}

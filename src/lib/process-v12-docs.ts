@@ -2,6 +2,7 @@ import type { DocItem, DocType } from "@/lib/tenancy-data";
 
 export type DocVerb = "Read" | "Download" | "Use as sample";
 export type DocGroupKind = "guide" | "sample";
+export type FileKind = "guide" | "template" | "sample";
 
 /** Product types already on the library: policies/guides vs templates/references. */
 const SAMPLE_TYPES: ReadonlySet<DocType> = new Set([
@@ -11,6 +12,12 @@ const SAMPLE_TYPES: ReadonlySet<DocType> = new Set([
 
 export function docGroupKind(doc: DocItem): DocGroupKind {
   return SAMPLE_TYPES.has(doc.type) ? "sample" : "guide";
+}
+
+export function fileKind(doc: DocItem): FileKind {
+  if (doc.type === "Template & Form") return "template";
+  if (doc.type === "Reference Document") return "sample";
+  return "guide";
 }
 
 export function verbForDoc(doc: DocItem): DocVerb {

@@ -1,0 +1,21 @@
+---
+description: Process search overlay chips come from RR, Tenant–Contractor Kit, and FAQ guides
+globs: src/lib/process-v15-search.ts,src/pages/ProcessV24.tsx
+alwaysApply: false
+---
+
+# Process overlay keywords
+
+The chip cluster under Search guides (`ProcessFind` overlay) is a **keyword feed**, not Topics.
+
+Pull labels from names that already exist in:
+
+1. Renovation Requirements (RR / `process-rules-v6`)
+2. Tenant–Contractor Kit (post-kickoff pack)
+3. FAQ guides (when they land on the map)
+
+Do not invent Project Officer jumps. Do not use chapter titles (`Access for the team`…) — those filter the desk.
+
+A chip only shows if it already matches the current catalogue (this role + unit). Never surface CAG-internal systems to tenant/contractor.
+
+At rest: up to 6, covering SetUp → Exit (not only the first five pack names). Typed overlay filters the same pool, cap 8. Short labels; wrap is fine.
