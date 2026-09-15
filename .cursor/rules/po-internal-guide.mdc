@@ -1,0 +1,18 @@
+---
+description: Hide CAG-internal tasks and tools from tenant and contractor
+globs: src/**/*.{ts,tsx}
+alwaysApply: true
+---
+
+# Tag the actor, not “everyone who might care”
+
+`audience` = who **does** the work. Never use `shared` for CAG-internal how-to.
+
+- `shared` = a moment everyone present actually takes part in (kickoff room, site walk).
+- Internal retrieve / sign-for-PO / Key Management System / OneDrive / Newforma / SharePoint / Procurement = `officer` (or the real actor). Tenant and contractor do not get that line in Your Steps.
+- They only see a handoff if `alsoText` is written for that reader — outcome, not the internal tool.
+- Never surface CAG-internal systems to tenant/contractor: OneDrive, Newforma, SharePoint, Hard Disk, Customer Discovery Insights, Key Management System, Procurement.
+- One unit = one map: keep the step in the rail. PO view keeps full depth.
+
+Good (tenant handover): “Walk the unit with IFM” / “Collect the keys.”
+Bad (tenant): “IFM will retrieve unit keys from the Key Management System” as shared, with a KMS link.

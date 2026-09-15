@@ -45,13 +45,16 @@ export function unitFromSelection(sel: Selection, company: string): Unit {
       u.tenancyType === sel.tenancyType &&
       u.zone === "Airside",
   );
+  if (match) {
+    return { ...match, company: match.company ?? company };
+  }
   return {
     id: `sel-${sel.terminal}-${sel.tenancyType}-Airside`,
-    unitNo: match?.unitNo ?? `${sel.terminal}-AS`,
+    unitNo: `${sel.terminal}-AS`,
     terminal: sel.terminal,
     tenancyType: sel.tenancyType,
     zone: "Airside",
-    company: match?.company ?? company,
+    company,
   };
 }
 
@@ -60,6 +63,9 @@ export type OfficerScope = { tenant: ManagedTenant | null; unit: Unit } | null;
 type AppState = {
   role: Role;
   setRole: (r: Role) => void;
+  signedIn: boolean;
+  signIn: (r: Role) => void;
+  signOut: () => void;
   unit: Unit;
   setUnit: (u: Unit) => void;
   units: Unit[];
@@ -92,15 +98,84 @@ type AppState = {
 const Ctx = createContext<AppState | null>(null);
 
 export function AppStateProvider({ children }: { children: ReactNode }) {
-  const [role, setRole] = useState<Role>("tenant");
+  const [role, setRoleState] = useState<Role>(() => {
+    try {
+      const fromUrl = new URLSearchParams(window.location.search).get("role");
+      if (
+        fromUrl === "tenant" ||
+        fromUrl === "contractor" ||
+        fromUrl === "officer"
+      ) {
+        window.localStorage.setItem("tempo:role", fromUrl);
+        return fromUrl;
+      }
+      const saved = window.localStorage.getItem("tempo:role");
+      if (
+        saved === "tenant" ||
+        saved === "contractor" ||
+        saved === "officer"
+      ) {
+        return saved;
+      }
+    } catch {
+      /* ignore */
+    }
+    return "contractor";
+  });
+  const [signedIn, setSignedIn] = useState(() => {
+    try {
+      const fromUrl = new URLSearchParams(window.location.search).get("role");
+      if (
+        fromUrl === "tenant" ||
+        fromUrl === "contractor" ||
+        fromUrl === "officer"
+      ) {
+        window.localStorage.setItem("tempo:signed-in", "1");
+        return true;
+      }
+      return window.localStorage.getItem("tempo:signed-in") === "1";
+    } catch {
+      return false;
+    }
+  });
+  const setRole = useCallback((r: Role) => {
+    setRoleState(r);
+    try {
+      window.localStorage.setItem("tempo:role", r);
+    } catch {
+      /* ignore */
+    }
+  }, []);
+  const signIn = useCallback(
+    (r: Role) => {
+      setRole(r);
+      setSignedIn(true);
+      try {
+        window.localStorage.setItem("tempo:signed-in", "1");
+      } catch {
+        /* ignore */
+      }
+    },
+    [setRole],
+  );
+  const signOut = useCallback(() => {
+    setSignedIn(false);
+    try {
+      window.localStorage.removeItem("tempo:signed-in");
+    } catch {
+      /* ignore */
+    }
+  }, []);
   const [selection, setSelectionState] = useState<Selection>({
     terminal: "T3",
     tenancyType: "F&B",
     zone: "Airside",
   });
-  const [officerSelection, setOfficerSelection] = useState<Selection | null>(
-    null,
-  );
+  const [officerSelection, setOfficerSelection] = useState<Selection | null>({
+    terminal: "T3",
+    tenancyType: "F&B",
+    zone: "Airside",
+  });
   const [assistantOpen, setAssistantOpen] = useState(false);
   const [assistantSeed, setAssistantSeed] = useState<string | null>(null);
   const [assistantContext, setAssistantContext] =
@@ -178,7 +253,10 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
   );
   const closeAssistant = useCallback(() => setAssistantOpen(false), []);
   const trackDoc = useCallback((id: string) => {
-    setRecentDocs((prev) => [id, ...prev.filter((x) => x !== id)].slice(0, 5));
+    setRecentDocs((prev) => {
+      if (prev[0] === id) return prev;
+      return [id, ...prev.filter((x) => x !== id)].slice(0, 5);
+    });
   }, []);
 
   const setStepStatus = useCallback(
@@ -221,6 +299,9 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
       value={{
         role,
         setRole,
+        signedIn,
+        signIn,
+        signOut,
         unit,
         setUnit,
         units: airsideUnits,
