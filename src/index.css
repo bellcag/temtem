@@ -159,7 +159,7 @@
     }
   }
 
-  /* Horizontal page margin is the AppShell side rails, not padding on the scroller. */
+  /* Horizontal page margin is AppShell main padding (same width as the old side rails). */
   .dls-page {
     width: 100%;
     max-width: var(--container-desktop);

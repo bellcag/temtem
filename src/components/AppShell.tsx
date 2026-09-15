@@ -78,23 +78,15 @@ export function AppShell() {
         />
       </div>
 
-      <div
-        className="w-4 shrink-0 bg-grey-50 tablet:w-8 desktop:w-10"
-        aria-hidden
-      />
       <main
         className={cn(
-          "min-w-0 flex-1",
+          "min-w-0 flex-1 px-4 tablet:px-8 desktop:px-10",
           figmaFull ? "overflow-visible" : "overflow-y-auto overflow-x-hidden",
         )}
       >
         <div className="h-14 shrink-0 tablet:hidden" aria-hidden />
         <Outlet />
       </main>
-      <div
-        className="w-4 shrink-0 bg-grey-50 tablet:w-8 desktop:w-10"
-        aria-hidden
-      />
       {!figmaFull && (
         <div className="hidden h-full desktop:contents">
           <AssistantPanel />

@@ -777,13 +777,29 @@ function railSafeTop() {
   return Math.max(barBottom, 16) + 16;
 }
 
-/** Reveal a card if its title sits under the sticky search / phase tabs. */
+/** Keep an open card fully on screen — below sticky chrome, above the fold. */
 function alignCardToRail(el: HTMLElement, behavior: ScrollBehavior = "smooth") {
   const scroller = nearestScroller(el);
   const pinTop = railSafeTop();
-  const top = el.getBoundingClientRect().top;
-  if (top >= pinTop - 2) return;
-  setScrollY(scroller, scrollYOf(scroller) + (top - pinTop), behavior);
+  const rect = el.getBoundingClientRect();
+  const viewBottom =
+    scroller === window
+      ? window.innerHeight
+      : (scroller as HTMLElement).getBoundingClientRect().bottom;
+  const safeBottom = viewBottom - 16;
+  const available = Math.max(0, safeBottom - pinTop);
+
+  let delta = 0;
+  if (rect.height > available) {
+    delta = rect.top - pinTop;
+  } else if (rect.top < pinTop - 2) {
+    delta = rect.top - pinTop;
+  } else if (rect.bottom > safeBottom + 2) {
+    delta = rect.bottom - safeBottom;
+  }
+
+  if (Math.abs(delta) < 2) return;
+  setScrollY(scroller, scrollYOf(scroller) + delta, behavior);
 }
 
 /** Figma icon leaf inside a fixed outer box — do not stretch the glyph. */
@@ -2241,6 +2257,133 @@ function FilterIconButton({
   );
 }
 
+function groupDropdownSections(options: DropdownOption[]) {
+  const sections: { group: DropdownOption | null; items: DropdownOption[] }[] =
+    [];
+  let current: { group: DropdownOption | null; items: DropdownOption[] } | null =
+    null;
+  for (const option of options) {
+    if (option.tone === "group") {
+      if (current) sections.push(current);
+      current = { group: option, items: [] };
+    } else {
+      if (!current) current = { group: null, items: [] };
+      current.items.push(option);
+    }
+  }
+  if (current) sections.push(current);
+  return sections;
+}
+
+function FilterSheetList({
+  options,
+  selectedValue,
+  activeIndex,
+  listId,
+  listRef,
+  labelledBy,
+  onPick,
+  onListKey,
+  onActive,
+}: {
+  options: DropdownOption[];
+  selectedValue: string;
+  activeIndex: number;
+  listId: string;
+  listRef: RefObject<HTMLUListElement | null>;
+  labelledBy?: string;
+  onPick: (value: string) => void;
+  onListKey: (e: KeyboardEvent<HTMLUListElement>) => void;
+  onActive: (index: number) => void;
+}) {
+  const sections = groupDropdownSections(options);
+  let index = 0;
+  return (
+    <ul
+      ref={listRef}
+      id={listId}
+      role="listbox"
+      aria-labelledby={labelledBy}
+      tabIndex={-1}
+      onKeyDown={onListKey}
+      className="min-h-0 flex-1 overflow-y-auto pb-2"
+    >
+      {sections.map((section, sectionIndex) => {
+        const group = section.group;
+        const groupIndex = group ? index++ : -1;
+        const groupSelected = Boolean(group && group.value === selectedValue);
+        return (
+          <li
+            key={group?.value ?? `section-${sectionIndex}`}
+            className={cn(sectionIndex > 0 && "border-t border-grey-100")}
+          >
+            {group ? (
+              <div
+                role="option"
+                aria-selected={groupSelected}
+                data-index={groupIndex}
+                onPointerEnter={() => onActive(groupIndex)}
+                onClick={() => onPick(group.value)}
+                className={cn(
+                  "flex w-full cursor-pointer items-baseline justify-between gap-3 px-4 pb-1 pt-4 text-left text-sm leading-[18px] font-bold",
+                  groupSelected
+                    ? "text-purple-700"
+                    : activeIndex === groupIndex
+                      ? "text-purple-700"
+                      : "text-black",
+                )}
+              >
+                <span className="min-w-0">{group.label}</span>
+                {group.hint ? (
+                  <span className="shrink-0 text-xs leading-4 font-normal text-grey-400">
+                    {group.hint}
+                  </span>
+                ) : null}
+              </div>
+            ) : null}
+            <ul>
+              {section.items.map((item) => {
+                const itemIndex = index++;
+                const isSelected = item.value === selectedValue;
+                const isActive = itemIndex === activeIndex;
+                return (
+                  <li key={item.value}>
+                    <div
+                      role="option"
+                      aria-selected={isSelected}
+                      data-index={itemIndex}
+                      onPointerEnter={() => onActive(itemIndex)}
+                      onClick={() => onPick(item.value)}
+                      className={cn(
+                        "flex w-full cursor-pointer items-baseline justify-between gap-3 px-4 py-3 text-left text-sm leading-[18px]",
+                        isSelected && "bg-purple-100 font-bold text-purple-700",
+                        !isSelected && isActive && "bg-purple-100",
+                        !isSelected && !isActive && "text-black",
+                      )}
+                    >
+                      <span className="min-w-0">{item.label}</span>
+                      {item.hint ? (
+                        <span
+                          className={cn(
+                            "shrink-0 text-xs leading-4 font-normal",
+                            isSelected ? "text-purple-500" : "text-grey-400",
+                          )}
+                        >
+                          {item.hint}
+                        </span>
+                      ) : null}
+                    </div>
+                  </li>
+                );
+              })}
+            </ul>
+          </li>
+        );
+      })}
+    </ul>
+  );
+}
+
 function FilterOptionList({
   options,
   selectedValue,
@@ -3198,8 +3341,9 @@ function PhaseDesk({
     if (!openStepKey) return;
     const el = rowElForStepKey(openStepKey);
     if (!el) return;
-    const align = () => alignCardToRail(el, "auto");
-    align();
+    const frame =
+      el.parentElement instanceof HTMLElement ? el.parentElement : el;
+    const align = () => alignCardToRail(frame, "smooth");
     let inner = 0;
     const outer = window.requestAnimationFrame(() => {
       inner = window.requestAnimationFrame(align);
@@ -3276,78 +3420,135 @@ function PhaseDesk({
           ) : (
             <header className="flex items-center gap-3">{heading}</header>
           )}
-          <div className="overflow-hidden rounded-[var(--radius-2xl)] bg-white shadow-[var(--shadow-light-bg)]">
-            {members.map((item, index) => {
+          {(() => {
+            const segments: { open: boolean; items: GuideItem[] }[] = [];
+            let closed: GuideItem[] = [];
+            for (const item of members) {
               const key = stepFocusKey(
                 item.stageName,
                 item.classified.step.name,
               );
-              const stepOpen = openStepKey === key;
-              const copyStep = item.packMembers?.length
-                ? PTW_PACK_HOST
-                : item.classified.step.name;
-              const title = cardTitle(role, item.stageName, copyStep);
-              const why = cardWhy(role, item.stageName, copyStep);
-              const who = whoLine(role, item.classified.step.people);
-              return (
-                <div
-                  key={key}
-                  id={findRowDomId(item.stageName, item.classified.step.name)}
-                  data-step-key={key}
-                  className={cn(
-                    "scroll-mt-[12rem] tablet:scroll-mt-8",
-                    "transition-[background-color,box-shadow] duration-200 ease-out",
-                    index > 0 && "border-t border-grey-100",
-                    focusKey === key && !stepOpen && "bg-purple-100",
-                  )}
-                >
-                  <button
-                    type="button"
-                    aria-expanded={stepOpen}
-                    onClick={() => setOpenStepKey(stepOpen ? null : key)}
-                    className={cn(
-                      "flex w-full items-start gap-3 px-4 py-4 text-left tablet:px-6",
-                      stepOpen ? "pb-2" : "hover:bg-grey-25",
-                      "focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--color-purple-600)]",
-                    )}
-                  >
-                    <span className="flex min-w-0 flex-1 flex-col gap-1.5">
-                      <span className="text-base leading-5 font-bold text-black">
-                        {title}
-                      </span>
-                      {why ? (
-                        <span
-                          className={cn(
-                            "text-sm leading-[18px]",
-                            stepOpen ? "text-grey-700" : "text-grey-600",
-                          )}
-                        >
-                          {why}
-                        </span>
-                      ) : who && who !== "You" ? (
-                        <span className="text-xs leading-4 text-grey-400">
-                          {who}
-                        </span>
-                      ) : null}
-                    </span>
-                    <IconLeaf
-                      src={caretDown}
-                      leafW={10}
-                      leafH={5.83}
-                      frame={16}
-                      rotate={stepOpen ? 180 : 0}
-                      colorClass="mt-0.5 text-grey-400"
-                    />
-                  </button>
-                  {stepOpen ? (
-                    <div className="border-t border-grey-100 px-4 pb-5 pt-3 tablet:px-6">
-                      {renderCard(item)}
+              if (key === openStepKey) {
+                if (closed.length) {
+                  segments.push({ open: false, items: closed });
+                  closed = [];
+                }
+                segments.push({ open: true, items: [item] });
+              } else {
+                closed.push(item);
+              }
+            }
+            if (closed.length) segments.push({ open: false, items: closed });
+            return (
+              <div
+                className={cn(
+                  "flex flex-col overflow-visible",
+                  openStepKey && "gap-5",
+                )}
+              >
+                {segments.map((seg) => {
+                  const segKey = stepFocusKey(
+                    seg.items[0].stageName,
+                    seg.items[0].classified.step.name,
+                  );
+                  return (
+                    <div
+                      key={`${seg.open ? "open" : "stack"}-${segKey}`}
+                      className={cn(
+                        "rounded-[var(--radius-2xl)] bg-white",
+                        "shadow-[var(--shadow-light-bg)]",
+                        "transition-[box-shadow] duration-200 ease-out",
+                        seg.open
+                          ? "relative z-10 outline outline-2 outline-purple-400"
+                          : "overflow-hidden",
+                      )}
+                    >
+                      {seg.items.map((item, index) => {
+                        const key = stepFocusKey(
+                          item.stageName,
+                          item.classified.step.name,
+                        );
+                        const stepOpen = seg.open;
+                        const copyStep = item.packMembers?.length
+                          ? PTW_PACK_HOST
+                          : item.classified.step.name;
+                        const title = cardTitle(
+                          role,
+                          item.stageName,
+                          copyStep,
+                        );
+                        const why = cardWhy(role, item.stageName, copyStep);
+                        const who = whoLine(
+                          role,
+                          item.classified.step.people,
+                        );
+                        return (
+                          <div
+                            key={key}
+                            id={findRowDomId(
+                              item.stageName,
+                              item.classified.step.name,
+                            )}
+                            data-step-key={key}
+                            className="scroll-mt-[12rem] tablet:scroll-mt-8"
+                          >
+                            <button
+                              type="button"
+                              aria-expanded={stepOpen}
+                              onClick={() =>
+                                setOpenStepKey(stepOpen ? null : key)
+                              }
+                              className={cn(
+                                "flex w-full items-start gap-3 px-5 py-4 text-left tablet:px-6",
+                                stepOpen ? "pb-4" : "hover:bg-grey-25",
+                                index > 0 && "border-t border-grey-100",
+                                "focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--color-purple-600)]",
+                              )}
+                            >
+                              <span className="flex min-w-0 flex-1 flex-col gap-1.5">
+                                <span className="text-base leading-5 font-bold text-black">
+                                  {title}
+                                </span>
+                                {why ? (
+                                  <span
+                                    className={cn(
+                                      "text-sm leading-[18px]",
+                                      stepOpen
+                                        ? "text-grey-700"
+                                        : "text-grey-600",
+                                    )}
+                                  >
+                                    {why}
+                                  </span>
+                                ) : who && who !== "You" ? (
+                                  <span className="text-xs leading-4 text-grey-400">
+                                    {who}
+                                  </span>
+                                ) : null}
+                              </span>
+                              <IconLeaf
+                                src={caretDown}
+                                leafW={10}
+                                leafH={5.83}
+                                frame={16}
+                                rotate={stepOpen ? 180 : 0}
+                                colorClass="mt-0.5 text-grey-400"
+                              />
+                            </button>
+                            {stepOpen ? (
+                              <div className="border-t border-grey-100 px-5 pb-6 pt-4 tablet:px-6">
+                                {renderCard(item)}
+                              </div>
+                            ) : null}
+                          </div>
+                        );
+                      })}
                     </div>
-                  ) : null}
-                </div>
-              );
-            })}
-          </div>
+                  );
+                })}
+              </div>
+            );
+          })()}
         </section>
         );
       })}
@@ -6768,37 +6969,59 @@ function DropdownField({
   onChange: (value: string) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const mobile = useMobileViewport();
   const rootRef = useRef<HTMLDivElement | null>(null);
   const listRef = useRef<HTMLUListElement | null>(null);
   const listId = useId();
+  const titleId = useId();
   const selected = options.find((o) => o.value === value) ?? options[0];
   const selectedIndex = Math.max(
     0,
     options.findIndex((o) => o.value === selected?.value),
   );
   const [activeIndex, setActiveIndex] = useState(selectedIndex);
+  const sheetSections =
+    mobile &&
+    options.some((option) => option.tone === "group") &&
+    options.some((option) => option.tone === "item");
 
   useEffect(() => {
     if (!open) return;
-    setActiveIndex(selectedIndex);
-    const onDoc = (e: PointerEvent) => {
-      if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
-    };
     const onKey = (e: KeyboardEvent) => {
       if (e.key === "Escape") setOpen(false);
     };
-    window.addEventListener("pointerdown", onDoc);
     window.addEventListener("keydown", onKey);
+    if (!mobile) {
+      const onDoc = (e: PointerEvent) => {
+        if (!rootRef.current?.contains(e.target as Node)) setOpen(false);
+      };
+      window.addEventListener("pointerdown", onDoc);
+      return () => {
+        window.removeEventListener("pointerdown", onDoc);
+        window.removeEventListener("keydown", onKey);
+      };
+    }
+    return () => window.removeEventListener("keydown", onKey);
+  }, [open, selectedIndex, mobile]);
+
+  useEffect(() => {
+    if (!open || !mobile) return;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
     return () => {
-      window.removeEventListener("pointerdown", onDoc);
-      window.removeEventListener("keydown", onKey);
+      document.body.style.overflow = prev;
     };
-  }, [open, selectedIndex]);
+  }, [open, mobile]);
 
   useEffect(() => {
     if (!open) return;
     listRef.current?.focus();
   }, [open]);
+
+  useEffect(() => {
+    if (!open) return;
+    setActiveIndex(selectedIndex);
+  }, [open, selectedIndex]);
 
   useEffect(() => {
     if (!open) return;
@@ -6849,6 +7072,49 @@ function DropdownField({
     }
   };
 
+  const optionItems = options.map((option, index) => {
+    const isSelected = option.value === selected?.value;
+    const isActive = index === activeIndex;
+    const isGroup = option.tone === "group";
+    const isItem = option.tone === "item";
+    return (
+      <li
+        key={option.value}
+        role="option"
+        aria-selected={isSelected}
+        data-index={index}
+        onPointerEnter={() => setActiveIndex(index)}
+        onClick={() => pick(option.value)}
+        className={cn(
+          "flex cursor-pointer items-baseline justify-between gap-3 py-3 text-sm leading-[18px] tablet:py-2.5 tablet:text-base tablet:leading-5",
+          isItem ? "pr-4 pl-8" : "px-4",
+          isGroup && !isSelected && "font-bold",
+          isSelected && "bg-purple-100 font-bold text-purple-700",
+          !isSelected && isActive && "bg-purple-100",
+          !isSelected && !isActive && isGroup && "text-grey-500",
+          !isSelected && !isActive && !isGroup && "text-black",
+        )}
+      >
+        <span className="min-w-0">
+          <DropdownLabel
+            prefix={isItem ? undefined : option.prefix}
+            label={option.label}
+          />
+        </span>
+        {option.hint ? (
+          <span
+            className={cn(
+              "shrink-0 text-xs leading-4 font-normal",
+              isSelected ? "text-purple-500" : "text-grey-400",
+            )}
+          >
+            {option.hint}
+          </span>
+        ) : null}
+      </li>
+    );
+  });
+
   return (
     <div ref={rootRef} className={cn("relative min-w-0", className)}>
       {showLabel && (
@@ -6859,7 +7125,7 @@ function DropdownField({
       <button
         type="button"
         aria-label={label}
-        aria-haspopup="listbox"
+        aria-haspopup={mobile ? "dialog" : "listbox"}
         aria-expanded={open}
         aria-controls={listId}
         disabled={disabled}
@@ -6899,7 +7165,7 @@ function DropdownField({
           </span>
         </span>
       </button>
-      {open && (
+      {open && !mobile && (
         <ul
           ref={listRef}
           id={listId}
@@ -6914,50 +7180,68 @@ function DropdownField({
               : "inset-x-0",
           )}
         >
-          {options.map((option, index) => {
-            const isSelected = option.value === selected?.value;
-            const isActive = index === activeIndex;
-            const isGroup = option.tone === "group";
-            const isItem = option.tone === "item";
-            return (
-              <li
-                key={option.value}
-                role="option"
-                aria-selected={isSelected}
-                data-index={index}
-                onPointerEnter={() => setActiveIndex(index)}
-                onClick={() => pick(option.value)}
-                className={cn(
-                  "flex cursor-pointer items-baseline justify-between gap-3 py-2.5 text-sm leading-[18px] tablet:text-base tablet:leading-5",
-                  isItem ? "pr-4 pl-8" : "px-4",
-                  isGroup && !isSelected && "font-bold",
-                  isSelected && "bg-purple-100 font-bold text-purple-700",
-                  !isSelected && isActive && "bg-purple-100",
-                  !isSelected && !isActive && isGroup && "text-grey-500",
-                  !isSelected && !isActive && !isGroup && "text-black",
-                )}
-              >
-                <span className="min-w-0">
-                  <DropdownLabel
-                    prefix={isItem ? undefined : option.prefix}
-                    label={option.label}
-                  />
-                </span>
-                {option.hint ? (
-                  <span
-                    className={cn(
-                      "shrink-0 text-xs leading-4 font-normal",
-                      isSelected ? "text-purple-500" : "text-grey-400",
-                    )}
-                  >
-                    {option.hint}
-                  </span>
-                ) : null}
-              </li>
-            );
-          })}
+          {optionItems}
         </ul>
       )}
+      {open && mobile
+        ? createPortal(
+            <div className="fixed inset-0 z-50 flex items-end justify-center">
+              <button
+                type="button"
+                aria-label={`Close ${label}`}
+                className="absolute inset-0 bg-black/40"
+                onClick={() => setOpen(false)}
+              />
+              <aside
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
+                className="relative flex max-h-[60vh] w-full flex-col rounded-t-[var(--radius-2xl)] bg-white shadow-[var(--shadow-light-bg)]"
+              >
+                <header className="flex items-center justify-between gap-3 border-b border-grey-75 px-4 py-3">
+                  <h2
+                    id={titleId}
+                    className="text-lg leading-[22px] font-bold text-black"
+                  >
+                    {label}
+                  </h2>
+                  <OverlayIconBtn
+                    label={`Close ${label}`}
+                    onClick={() => setOpen(false)}
+                  >
+                    <OverlayCloseGlyph />
+                  </OverlayIconBtn>
+                </header>
+                {sheetSections ? (
+                  <FilterSheetList
+                    options={options}
+                    selectedValue={selected?.value ?? ""}
+                    activeIndex={activeIndex}
+                    listId={listId}
+                    listRef={listRef}
+                    labelledBy={titleId}
+                    onPick={pick}
+                    onListKey={onListKey}
+                    onActive={setActiveIndex}
+                  />
+                ) : (
+                  <ul
+                    ref={listRef}
+                    id={listId}
+                    role="listbox"
+                    aria-label={label}
+                    tabIndex={-1}
+                    onKeyDown={onListKey}
+                    className="min-h-0 flex-1 overflow-y-auto py-1"
+                  >
+                    {optionItems}
+                  </ul>
+                )}
+              </aside>
+            </div>,
+            document.body,
+          )
+        : null}
     </div>
   );
 }
