@@ -2,6 +2,7 @@ import { Link, useParams } from "react-router-dom";
 import { FileText, ArrowLeft } from "lucide-react";
 import { DOCUMENTS } from "@/lib/tenancy-data";
 import { useApp } from "@/lib/app-state";
+import { publicUrl } from "@/lib/public-url";
 import { useEffect, useMemo, useState } from "react";
 
 export function DocumentsPage() {
@@ -105,7 +106,7 @@ export function DocumentDetailPage() {
       <div className="mt-6 overflow-hidden rounded-[var(--radius-2xl)] border border-grey-100 bg-grey-75">
         <iframe
           title={`PDF — ${doc.name}`}
-          src={`/docs/${doc.id}.pdf#view=FitH`}
+          src={`${publicUrl(`/docs/${doc.id}.pdf`)}#view=FitH`}
           className="h-[70vh] w-full border-0 bg-white"
         />
       </div>
@@ -119,7 +120,7 @@ export function DocumentDetailPage() {
         </p>
         <div className="mt-6 flex flex-wrap gap-3">
           <a
-            href={`/docs/${doc.id}.pdf`}
+            href={publicUrl(`/docs/${doc.id}.pdf`)}
             target="_blank"
             rel="noreferrer"
             className="inline-flex rounded-[var(--radius-sm)] border border-grey-200 bg-white px-4 py-2 text-sm font-bold text-grey-700 hover:border-purple-300 hover:text-purple-700"

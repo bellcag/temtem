@@ -3,10 +3,11 @@ import { Link } from "react-router-dom";
 import { ExternalLink, FileText, X } from "lucide-react";
 import { DOCUMENTS, type DocItem } from "@/lib/tenancy-data";
 import { useApp } from "@/lib/app-state";
+import { publicUrl } from "@/lib/public-url";
 
 function pdfSrcFor(doc: DocItem) {
   // Prototype PDFs live in /public/docs/{id}.pdf
-  return `/docs/${doc.id}.pdf`;
+  return publicUrl(`/docs/${doc.id}.pdf`);
 }
 
 export function DocumentPreviewDrawer({

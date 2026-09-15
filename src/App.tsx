@@ -93,7 +93,9 @@ function ProcessCanonicalRedirect() {
 export default function App() {
   return (
     <AppStateProvider>
-      <BrowserRouter>
+      <BrowserRouter
+        basename={import.meta.env.BASE_URL.replace(/\/$/, "") || undefined}
+      >
         <Suspense fallback={<PageFallback />}>
           <Routes>
             <Route index element={<IndexRedirect />} />
