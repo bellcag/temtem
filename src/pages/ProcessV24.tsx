@@ -173,9 +173,11 @@ const LS_KEY = "tempo:v24:lastPhase";
 /** Runway All Caps — 12/16 Bold, Grey/400. Swimlane and section labels. */
 const LABEL_CAPS =
   "text-xs leading-4 font-bold uppercase tracking-[0.08em] text-grey-400";
-/** Phase / drilled topic — H6 mobile, H5 desktop (Admin header). */
+/** Page title — H6 mobile, H5 desktop (Admin header). */
 const TITLE_PAGE =
   "text-xl leading-[26px] font-black text-black tablet:text-2xl tablet:leading-[30px]";
+/** Drilled topic — H6 20/26 Bold. */
+const TITLE_TOPIC = "text-xl leading-[26px] font-bold text-black";
 /** Topic group under a phase — Body L mobile, H6 desktop. */
 const TITLE_GROUP =
   "text-base leading-5 font-bold text-grey-700 tablet:text-xl tablet:leading-[26px]";
@@ -2636,7 +2638,7 @@ function ChapterRail({
                   "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]",
                   "disabled:opacity-40",
                   on
-                    ? "bg-purple-100 font-bold text-purple-600"
+                    ? "bg-white font-bold text-purple-600"
                     : "text-black hover:bg-grey-25",
                 )}
               >
@@ -2715,7 +2717,7 @@ function ChapterRail({
                           "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]",
                           "disabled:opacity-40",
                           on
-                            ? "bg-purple-100 font-bold text-purple-600"
+                            ? "bg-white font-bold text-purple-600"
                             : "text-black hover:bg-grey-25",
                         )}
                       >
@@ -3286,7 +3288,6 @@ function PhaseDesk({
   focusStep = null,
   onSelectGroup,
   onOpenStep,
-  allowGroupJump = true,
 }: {
   phaseId: PhaseDeskId;
   items: GuideItem[];
@@ -3298,7 +3299,6 @@ function PhaseDesk({
   onOpenStep?: (
     step: { stageName: string; stepName: string } | null,
   ) => void;
-  allowGroupJump?: boolean;
 }) {
   const desk = PHASE_DESKS[phaseId];
   const groups = desk.groups
@@ -3382,9 +3382,7 @@ function PhaseDesk({
               </button>
             ) : null}
             {openId ? (
-              <h2 className={TITLE_PAGE}>{group.title}</h2>
-            ) : allowGroupJump && onSelectGroup ? (
-              <span className={TITLE_GROUP}>{group.title}</span>
+              <h2 className={TITLE_TOPIC}>{group.title}</h2>
             ) : (
               <h3 className={TITLE_GROUP}>{group.title}</h3>
             )}
@@ -3405,21 +3403,7 @@ function PhaseDesk({
             openId ? "gap-5" : "gap-3",
           )}
         >
-          {onSelectGroup && allowGroupJump && !openId ? (
-            <button
-              type="button"
-              onClick={() => onSelectGroup(group.id)}
-              className={cn(
-                "flex w-full items-center gap-3 rounded-[var(--radius-sm)] text-left",
-                "hover:bg-grey-25",
-                "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]",
-              )}
-            >
-              {heading}
-            </button>
-          ) : (
-            <header className="flex items-center gap-3">{heading}</header>
-          )}
+          <header className="flex items-center gap-3">{heading}</header>
           {(() => {
             const segments: { open: boolean; items: GuideItem[] }[] = [];
             let closed: GuideItem[] = [];
@@ -6668,7 +6652,6 @@ export function ProcessV24Page() {
       focusStep={searchFocus}
       onSelectGroup={(groupId) => handleSelectTopic(active.id, groupId)}
       onOpenStep={handleOpenStep}
-      allowGroupJump
     />
   );
 
@@ -6695,7 +6678,7 @@ export function ProcessV24Page() {
           </div>
         </header>
 
-          <div className="mt-3 px-1">
+          <div className="mt-3">
             <ProcessFind
               query={searchQuery}
               chips={searchChips}
@@ -6757,7 +6740,7 @@ export function ProcessV24Page() {
           <div className="mt-5 grid grid-cols-1 gap-6 tablet:mt-6 tablet:grid-cols-12 tablet:items-start">
             {typedQuery ? null : (
               <aside
-                className="hidden min-w-0 tablet:sticky tablet:top-8 tablet:col-span-4 tablet:col-start-1 tablet:flex tablet:flex-col tablet:gap-3 tablet:self-start"
+                className="hidden min-w-0 tablet:sticky tablet:top-8 tablet:col-span-4 tablet:col-start-1 tablet:flex tablet:flex-col tablet:gap-3 tablet:self-start desktop:col-span-3"
               >
                 <ChapterRail
                   phases={visiblePhaseIds}
@@ -6779,7 +6762,7 @@ export function ProcessV24Page() {
                 "flex min-w-0 flex-col gap-6",
                 typedQuery
                   ? "tablet:col-span-12"
-                  : "tablet:col-span-8 tablet:col-start-5",
+                  : "tablet:col-span-8 tablet:col-start-5 desktop:col-span-9 desktop:col-start-4",
               )}
             >
               {pathSteps}

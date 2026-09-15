@@ -53,7 +53,7 @@ export const PHASE_DESKS: Record<PhaseDeskId, PhaseDesk> = {
       {
         id: "align",
         title: "Approving the design",
-        lead: "Drawings, then KickOff.",
+        lead: "Present drawings at KickOff. Written approval is required before permits or works.",
         match: (stage) =>
           stage === "Pre-Kickoff" ||
           stage === "Kickoff" ||
