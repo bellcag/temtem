@@ -70,6 +70,7 @@ const TITLES: Record<string, string> = {
   "Opening::Point of Sales Data Reporting": "Point of sale summary",
   "Opening::TOPAZ Account Setup": "TOPAZ account setup",
   "Operations::Regular Servicing Reporting": "Regular service reports",
+  "Operations::Maintenance works": "Maintenance works",
   "Operations::Upcoming works": "Upcoming works",
   "Operations::Later renovation works": "Later renovation works",
   "Operations::Works after opening": "Works after opening",
@@ -187,6 +188,7 @@ const LEADS: Record<Role, Record<string, string>> = {
     "Opening::Point of Sales Data Reporting": "Get sales summary",
     "Opening::TOPAZ Account Setup": "Get TOPAZ account",
     "Operations::Regular Servicing Reporting": "Lodge service reports",
+    "Operations::Maintenance works": "Read planned works",
     "Operations::Upcoming works": "See the list",
     "Operations::Later renovation works": "Start renovation works",
     "Operations::Works after opening": "If you need",
@@ -258,6 +260,7 @@ const LEADS: Record<Role, Record<string, string>> = {
       "Get fire certificates",
     "Renovation::Pre-Opening Inspection": "Attend opening inspection",
     "Opening::Store Opening & Capex Verification": "Fix flagged defects",
+    "Operations::Maintenance works": "Fill planned works",
     "Operations::Upcoming works": "See the list",
     "Operations::Later renovation works": "Start renovation works",
     "Operations::Works after opening": "Start if needed",
@@ -331,6 +334,7 @@ const LEADS: Record<Role, Record<string, string>> = {
     "Opening::Point of Sales Data Reporting": "Pull sales summary",
     "Opening::TOPAZ Account Setup": "Create TOPAZ account",
     "Operations::Regular Servicing Reporting": "Check service reports",
+    "Operations::Maintenance works": "Check planned works",
     "Operations::Upcoming works": "See the list",
     "Operations::Later renovation works": "Check renovation works",
     "Operations::Works after opening": "Fill if they need",
@@ -565,6 +569,9 @@ const tenant: Record<string, LifeSgCard> = {
   "Operations::Regular Servicing Reporting": {
     subheader: ["Lodge service reports in TOPAZ on schedule."],
   },
+  "Operations::Maintenance works": {
+    subheader: ["Read works your contractor named."],
+  },
   "Operations::Upcoming works": {
     subheader: ["Read works the Project Officer started for this unit."],
   },
@@ -780,6 +787,9 @@ const contractor: Record<string, LifeSgCard> = {
   },
   "Opening::Store Opening & Capex Verification": {
     subheader: ["Fix defects from IFM comments before opening."],
+  },
+  "Operations::Maintenance works": {
+    subheader: ["Fill planned works for this job."],
   },
   "Operations::Upcoming works": {
     subheader: ["Read the list, or tick if the officer has not yet."],
@@ -1038,6 +1048,9 @@ const officer: Record<string, LifeSgCard> = {
   "Operations::Regular Servicing Reporting": {
     subheader: ["Check IFM approved service reports in TOPAZ."],
     hideOnlyIf: true,
+  },
+  "Operations::Maintenance works": {
+    subheader: ["Fill or check planned works."],
   },
   "Operations::Upcoming works": {
     subheader: ["Start a job when the unit needs a refresh or fix."],

@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-  base: process.env.GITHUB_PAGES === "1" ? "/temtem/v20/" : "/",
+  base: process.env.GITHUB_PAGES === "1" ? "/temtem/v20-operate-quiz/" : "/",
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

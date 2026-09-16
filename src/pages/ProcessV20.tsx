@@ -21,6 +21,7 @@ import {
   type DocItem,
   type Phase,
   type PlannedWorkSlug,
+  type Step,
   type Unit,
 } from "@/lib/tenancy-data";
 import { useApp, type Role } from "@/lib/app-state";
@@ -29,6 +30,7 @@ import {
   alsoHappeningText,
   cardActor,
   classifyStage,
+  classifyStep,
   displayText,
   docsByIds,
   docsForStep,
@@ -79,6 +81,8 @@ import {
   filledDemoQuiz,
   midwayDemoQuiz,
   questionHasAnswer,
+  quizUiCopy,
+  readOperateQuizState,
   KICKOFF_STAGE_NAME,
   KICKOFF_STEP_NAME,
   NONE_ID,
@@ -106,9 +110,11 @@ import {
   slugFlags,
   stepCertainty,
   toggleQuestionOption,
+  writeOperateQuizState,
   writeQuizState,
   type QuestionId,
   type QuizQuestion,
+  type QuizScope,
   type QuizState,
   type QuizStickyTone,
   type QuizStickyTrackStep,
@@ -133,6 +139,39 @@ import linkIcon from "@/assets/figma/link.svg";
 import writeFormsIcon from "@/assets/figma/write-forms.svg";
 
 const LS_KEY = "tempo:v17:lastPhase";
+
+export const MAINTENANCE_WORKS_STEP = "Maintenance works";
+const MAINTENANCE_WORKS_STAGE = "Operations";
+
+const MAINTENANCE_WORKS_CATALOGUE: Step = {
+  name: MAINTENANCE_WORKS_STEP,
+  responsible: "You",
+  what: "Name planned works when the unit needs repair or refresh after opening.",
+  whatFor: {
+    tenant: "Read the planned works answers when the unit needs repair or refresh.",
+    contractor: "Fill planned works when the unit needs repair or refresh.",
+    officer: "Check planned works when the unit needs repair or refresh.",
+  },
+  subSteps: [
+    {
+      text: "Read the planned works answers.",
+      audience: "tenant",
+      alsoText: {
+        contractor: "Fill planned works for these after-opening works.",
+        officer: "Check planned works for these after-opening works.",
+      },
+    },
+    {
+      text: "Fill planned works for these after-opening works.",
+      audience: "contractor",
+    },
+    {
+      text: "Fill or check planned works for these after-opening works.",
+      audience: "officer",
+    },
+  ],
+  people: ["Contractor", "Project Officer"],
+};
 
 /** Runway All Caps — 12/16 Bold, Grey/400. Swimlane and section labels. */
 const LABEL_CAPS =
@@ -1713,6 +1752,7 @@ function PlannedWorksSheet({
   onSave,
   onClose,
   allowUnsure = true,
+  scope = "fitout",
 }: {
   open: boolean;
   questions: QuizQuestion[];
@@ -1721,7 +1761,9 @@ function PlannedWorksSheet({
   onSave: () => void;
   onClose: () => void;
   allowUnsure?: boolean;
+  scope?: QuizScope;
 }) {
+  const ui = quizUiCopy(scope);
   const mobile = useMobileViewport();
   const [page, setPage] = useState(0);
   const lastPage = Math.max(questions.length - 1, 0);
@@ -1788,10 +1830,10 @@ function PlannedWorksSheet({
               id="planned-works-sheet-title"
               className="text-lg leading-[22px] font-bold text-black"
             >
-              Planned Works Quiz
+              {ui.sheetTitle}
             </h2>
             <p className="text-sm leading-[18px] text-grey-700">
-              {quizCopy.bannerContractor}
+              {ui.bannerContractor}
             </p>
           </div>
           <OverlayIconBtn label="Close" onClick={onClose}>
@@ -1806,7 +1848,7 @@ function PlannedWorksSheet({
             allowUnsure={allowUnsure}
           />
           <p className="text-sm leading-[18px] text-grey-700 italic">
-            {quizCopy.pauseHint}
+            {ui.pauseHint}
           </p>
         </div>
         <footer
@@ -1854,10 +1896,10 @@ function PlannedWorksSheet({
             )}
           >
             <SheetActionBtn tone="secondary" onClick={onClose}>
-              {quizCopy.officerCancelCta}
+              {ui.officerCancelCta}
             </SheetActionBtn>
             <SheetActionBtn onClick={onSave}>
-              {quizCopy.sheetSaveCta}
+              {ui.sheetSaveCta}
             </SheetActionBtn>
           </div>
         </footer>
@@ -1870,11 +1912,14 @@ function OfficerEditGate({
   open,
   onConfirm,
   onClose,
+  scope = "fitout",
 }: {
   open: boolean;
   onConfirm: () => void;
   onClose: () => void;
+  scope?: QuizScope;
 }) {
+  const quizCopy = quizUiCopy(scope);
   const mobile = useMobileViewport();
 
   useEffect(() => {
@@ -1994,6 +2039,7 @@ function OfficerConfirmSheet({
   onEdit,
   onConfirm,
   onBlocked,
+  scope = "fitout",
 }: {
   open: boolean;
   rows: QuizReviewRow[];
@@ -2001,7 +2047,9 @@ function OfficerConfirmSheet({
   onEdit: () => void;
   onConfirm: () => void;
   onBlocked: () => void;
+  scope?: QuizScope;
 }) {
+  const quizCopy = quizUiCopy(scope);
   const mobile = useMobileViewport();
   const openCount = unansweredReviewCount(rows);
   const canLock = openCount === 0;
@@ -2108,12 +2156,15 @@ function OfficerLockGate({
   openCount,
   onClose,
   onEdit,
+  scope = "fitout",
 }: {
   open: boolean;
   openCount: number;
   onClose: () => void;
   onEdit: () => void;
+  scope?: QuizScope;
 }) {
+  const quizCopy = quizUiCopy(scope);
   const mobile = useMobileViewport();
 
   useEffect(() => {
@@ -2201,10 +2252,13 @@ function OfficerLockGate({
 function OfficerLockToast({
   open,
   onClose,
+  scope = "fitout",
 }: {
   open: boolean;
   onClose: () => void;
+  scope?: QuizScope;
 }) {
+  const quizCopy = quizUiCopy(scope);
   useEffect(() => {
     if (!open) return;
     const t = window.setTimeout(onClose, 6000);
@@ -3441,7 +3495,39 @@ function blocksForPhase(
       };
     })
     .filter((b) => b.steps.length > 0);
-  return injectPlannedWorksQuiz(blocks, role, showQuiz);
+  const injected = injectPlannedWorksQuiz(blocks, role, showQuiz);
+  if (phase.id !== "operate") return injected;
+  return injectMaintenanceWorks(injected, role, unit);
+}
+
+function injectMaintenanceWorks(
+  blocks: { stage: { name: string }; steps: ClassifiedStep[] }[],
+  role: Role,
+  unit: Unit,
+) {
+  const classified = classifyStep(MAINTENANCE_WORKS_CATALOGUE, role, unit);
+  if (!classified) return blocks;
+  if (
+    blocks.some((block) =>
+      block.steps.some((row) => row.step.name === MAINTENANCE_WORKS_STEP),
+    )
+  ) {
+    return blocks;
+  }
+  const opsIdx = blocks.findIndex(
+    (block) => block.stage.name === MAINTENANCE_WORKS_STAGE,
+  );
+  if (opsIdx >= 0) {
+    return blocks.map((block, index) =>
+      index === opsIdx
+        ? { ...block, steps: [classified, ...block.steps] }
+        : block,
+    );
+  }
+  return [
+    { stage: { name: MAINTENANCE_WORKS_STAGE }, steps: [classified] },
+    ...blocks,
+  ];
 }
 
 export function ProcessV20Page() {
@@ -3464,6 +3550,8 @@ export function ProcessV20Page() {
   const [previewDocId, setPreviewDocId] = useState<string | null>(null);
   const [jobId, setJobId] = useState(CONTRACTOR_JOBS[0].id);
   const [quiz, setQuiz] = useState<QuizState>(EMPTY_QUIZ);
+  const [operateQuiz, setOperateQuiz] = useState<QuizState>(EMPTY_QUIZ);
+  const [quizScope, setQuizScope] = useState<QuizScope>("fitout");
   const [officerDraft, setOfficerDraft] = useState<QuizState | null>(null);
   const [contractorDraft, setContractorDraft] = useState<QuizState | null>(null);
   const [quizSheetOpen, setQuizSheetOpen] = useState(false);
@@ -3522,6 +3610,7 @@ export function ProcessV20Page() {
   useEffect(() => {
     if (!showQuiz) {
       setQuiz(EMPTY_QUIZ);
+      setOperateQuiz(EMPTY_QUIZ);
       setOfficerDraft(null);
       setContractorDraft(null);
       return;
@@ -3549,6 +3638,22 @@ export function ProcessV20Page() {
     } else {
       setQuiz(saved);
     }
+    const operateSaved = readOperateQuizState(ctxUnit.id);
+    if (
+      role === "officer" &&
+      operateSaved.status === "editing" &&
+      quizHasSavedAnswers(operateSaved)
+    ) {
+      const closed: QuizState = {
+        ...operateSaved,
+        status: "done",
+        answers: completeAnswers(operateSaved.answers),
+      };
+      setOperateQuiz(closed);
+      writeOperateQuizState(ctxUnit.id, closed);
+    } else {
+      setOperateQuiz(operateSaved);
+    }
     setOfficerDraft(null);
     setContractorDraft(null);
   }, [showQuiz, ctxUnit.id, role, params]);
@@ -3570,8 +3675,12 @@ export function ProcessV20Page() {
     window.localStorage.setItem(LS_JOB, id);
   };
 
-  const persistQuiz = (next: QuizState) => {
-    if (!quizCanWrite(role, quiz)) return;
+  const scopedQuiz = (scope: QuizScope) =>
+    scope === "operate" ? operateQuiz : quiz;
+
+  const persistFor = (scope: QuizScope, next: QuizState) => {
+    const current = scopedQuiz(scope);
+    if (!quizCanWrite(role, current)) return;
     const answers = completeAnswers(next.answers);
     const empty = !quizHasSavedAnswers({ ...next, answers });
     const safe: QuizState = {
@@ -3580,15 +3689,22 @@ export function ProcessV20Page() {
       confirmed:
         role === "officer" && !empty ? Boolean(next.confirmed) : false,
     };
-    setQuiz(safe);
-    writeQuizState(ctxUnit.id, safe);
+    if (scope === "operate") {
+      setOperateQuiz(safe);
+      writeOperateQuizState(ctxUnit.id, safe);
+    } else {
+      setQuiz(safe);
+      writeQuizState(ctxUnit.id, safe);
+    }
   };
 
-  const openOfficerDraft = () => {
+  const openOfficerDraft = (scope: QuizScope = quizScope) => {
+    const current = scopedQuiz(scope);
+    setQuizScope(scope);
     setOfficerDraft({
       status: "editing",
-      answers: completeAnswers(quiz.answers),
-      confirmed: quiz.confirmed,
+      answers: completeAnswers(current.answers),
+      confirmed: current.confirmed,
     });
   };
 
@@ -3603,6 +3719,14 @@ export function ProcessV20Page() {
   const plannedFlags = useMemo(
     () => (showQuiz ? slugFlags(quiz, ctxUnit) : null),
     [showQuiz, quiz, ctxUnit],
+  );
+  const operateSummary = useMemo(
+    () => (showQuiz ? answerSummaryLines(operateQuiz, ctxUnit) : []),
+    [showQuiz, operateQuiz, ctxUnit],
+  );
+  const operateFlags = useMemo(
+    () => (showQuiz ? slugFlags(operateQuiz, ctxUnit) : null),
+    [showQuiz, operateQuiz, ctxUnit],
   );
 
   const visiblePhases = useMemo(
@@ -3629,18 +3753,20 @@ export function ProcessV20Page() {
     window.localStorage.setItem(LS_KEY, active.id);
   }, [phaseFromUrl, active.id, setSearchParams]);
 
-  const worksProgress = quizProgress(quiz, ctxUnit);
+  const stickyScope: QuizScope = active.id === "operate" ? "operate" : "fitout";
+  const stickyQuiz = scopedQuiz(stickyScope);
+  const worksProgress = quizProgress(stickyQuiz, ctxUnit);
   const showWorksSticky =
     (isContractor || isOfficer) &&
     showQuiz &&
     browsingPhase &&
     !needsContext &&
-    !quizIsConfirmed(quiz) &&
-    (active.id === "setup" || active.id === "build");
+    !quizIsConfirmed(stickyQuiz) &&
+    (active.id === "setup" || active.id === "build" || active.id === "operate");
   const pinWorksSticky =
     showWorksSticky && worksProgress.answered < worksProgress.total;
 
-  const worksSticky = quizStickyCopy(quiz, ctxUnit, role);
+  const worksSticky = quizStickyCopy(stickyQuiz, ctxUnit, role, stickyScope);
 
   useEffect(() => {
     const main = document.querySelector("main");
@@ -3701,14 +3827,14 @@ export function ProcessV20Page() {
   const officerReviewRows = useMemo(
     () =>
       showQuiz && isOfficer
-        ? quizReviewRows(officerDraft ?? quiz, ctxUnit)
+        ? quizReviewRows(officerDraft ?? scopedQuiz(quizScope), ctxUnit)
         : [],
-    [showQuiz, isOfficer, officerDraft, quiz, ctxUnit],
+    [showQuiz, isOfficer, officerDraft, quiz, operateQuiz, quizScope, ctxUnit],
   );
   const officerOpenCount = unansweredReviewCount(officerReviewRows);
 
-  const openOfficerQuizSheet = () => {
-    openOfficerDraft();
+  const openOfficerQuizSheet = (scope: QuizScope = quizScope) => {
+    openOfficerDraft(scope);
     setOfficerEditGateOpen(false);
     setQuizSheetOpen(true);
   };
@@ -3726,37 +3852,43 @@ export function ProcessV20Page() {
   };
 
   const lockOfficerAnswers = () => {
-    const src = officerDraft ?? quiz;
+    const src = officerDraft ?? scopedQuiz(quizScope);
     if (unansweredReviewCount(quizReviewRows(src, ctxUnit)) > 0) {
       setOfficerLockGateOpen(true);
       return;
     }
-    persistQuiz(confirmPlannedWorks(src));
+    persistFor(quizScope, confirmPlannedWorks(src));
     setOfficerDraft(null);
     setOfficerConfirmOpen(false);
     setOfficerLockGateOpen(false);
     setOfficerLockToastOpen(true);
   };
 
-  const openQuizSheet = (edit = true) => {
+  const openQuizSheet = (edit = true, scope: QuizScope = "fitout") => {
+    setQuizScope(scope);
+    const current = scopedQuiz(scope);
     if (role === "tenant") {
-      scrollToStep(QUIZ_STAGE_NAME, QUIZ_STEP_NAME);
+      if (scope === "operate") {
+        scrollToStep(MAINTENANCE_WORKS_STAGE, MAINTENANCE_WORKS_STEP);
+      } else {
+        scrollToStep(QUIZ_STAGE_NAME, QUIZ_STEP_NAME);
+      }
       return;
     }
-    if (role === "contractor" && !quizCanWrite(role, quiz)) return;
+    if (role === "contractor" && !quizCanWrite(role, current)) return;
     if (role === "officer") {
-      if (edit && quizHasSavedAnswers(quiz)) {
+      if (edit && quizHasSavedAnswers(current)) {
         setOfficerEditGateOpen(true);
         return;
       }
-      openOfficerDraft();
+      openOfficerDraft(scope);
       setQuizSheetOpen(true);
       return;
     }
     setContractorDraft({
       status: "editing",
-      answers: completeAnswers(quiz.answers),
-      confirmed: quiz.confirmed,
+      answers: completeAnswers(current.answers),
+      confirmed: current.confirmed,
     });
     setQuizSheetOpen(true);
   };
@@ -3782,10 +3914,15 @@ export function ProcessV20Page() {
   }, [role]);
 
   useEffect(() => {
-    if (isContractor && quizIsConfirmed(quiz)) setQuizSheetOpen(false);
-  }, [isContractor, quiz]);
+    if (isContractor && quizIsConfirmed(scopedQuiz(quizScope))) {
+      setQuizSheetOpen(false);
+    }
+  }, [isContractor, quiz, operateQuiz, quizScope]);
 
-  const quizLocked = quizIsConfirmed(quiz);
+  const phaseFlags = active.id === "operate" ? operateFlags : plannedFlags;
+  const quizLocked = quizIsConfirmed(
+    active.id === "operate" ? operateQuiz : quiz,
+  );
 
   const stageBlocks = useMemo(() => {
     if (needsContext) return [];
@@ -3794,10 +3931,10 @@ export function ProcessV20Page() {
       role,
       ctxUnit,
       showQuiz,
-      plannedFlags,
+      phaseFlags,
       quizLocked,
     );
-  }, [active, role, ctxUnit, needsContext, showQuiz, plannedFlags, quizLocked]);
+  }, [active, role, ctxUnit, needsContext, showQuiz, phaseFlags, quizLocked]);
 
   const journeyItems = useMemo(() => {
     const list: JourneyItem[] = [];
@@ -3818,6 +3955,10 @@ export function ProcessV20Page() {
   const permitResult = useMemo(
     () => (showQuiz ? quizPermitResult(quiz, ctxUnit) : null),
     [showQuiz, quiz, ctxUnit],
+  );
+  const operatePermitResult = useMemo(
+    () => (showQuiz ? quizPermitResult(operateQuiz, ctxUnit) : null),
+    [showQuiz, operateQuiz, ctxUnit],
   );
 
   const navKeySig = journeyItems
@@ -3969,7 +4110,7 @@ export function ProcessV20Page() {
         total={worksProgress.total}
         track={worksSticky.track}
         tip={worksSticky.tip}
-        onOpen={() => openQuizSheet(true)}
+        onOpen={() => openQuizSheet(true, stickyScope)}
       />
     ) : null;
 
@@ -4007,8 +4148,83 @@ export function ProcessV20Page() {
     </div>
   );
 
+  const quizBundleFor = (scope: QuizScope) => {
+    const state = scopedQuiz(scope);
+    return {
+      scope,
+      kickoffSoon:
+        scope === "operate"
+          ? false
+          : isContractor
+            ? Boolean(activeJob.kickoffSoon)
+            : kickoffSoonForUnit(ctxUnit),
+      state,
+      questions: quizQuestions,
+      summary: scope === "operate" ? operateSummary : quizSummary,
+      flags: scope === "operate" ? operateFlags : plannedFlags,
+      permitResult: scope === "operate" ? operatePermitResult : permitResult,
+      onStart: () => openQuizSheet(true, scope),
+      onToggle: (questionId: QuestionId, optionId: string) => {
+        if (officerDraft && quizScope === scope) {
+          setOfficerDraft(
+            toggleQuestionOption(officerDraft, questionId, optionId),
+          );
+          return;
+        }
+        if (contractorDraft && quizScope === scope) {
+          setContractorDraft(
+            toggleQuestionOption(contractorDraft, questionId, optionId),
+          );
+        }
+      },
+      onConfirm: () => {
+        if (role !== "officer") return;
+        setQuizScope(scope);
+        openOfficerConfirmSheet();
+      },
+      onCancel: () => {
+        setOfficerDraft(null);
+        if (role === "officer" && state.status === "editing") {
+          persistFor(scope, {
+            status: "done",
+            answers: state.answers,
+            confirmed: state.confirmed,
+          });
+        }
+      },
+      onEdit: () => {
+        if (role === "officer") {
+          if (quizIsConfirmed(state)) {
+            openQuizSheet(true, scope);
+            return;
+          }
+          returnToConfirm.current = false;
+          openOfficerQuizSheet(scope);
+          return;
+        }
+        openQuizSheet(true, scope);
+      },
+      onOpenQuiz: (edit = true) => {
+        openQuizSheet(edit, scope);
+      },
+      onApplySlugs: (slugs: PlannedWorkSlug[]) => {
+        persistFor(scope, applySlugsToQuiz(scopedQuiz(scope), slugs, ctxUnit));
+      },
+      onDismissSlugs: (slugs: PlannedWorkSlug[]) => {
+        persistFor(
+          scope,
+          dismissSlugsFromQuiz(scopedQuiz(scope), slugs, ctxUnit),
+        );
+      },
+    };
+  };
+
   const pathSteps = visibleJourneyItems.map((item) => {
     const key = stepFocusKey(item.stageName, item.classified.step.name);
+    const cardScope: QuizScope =
+      item.classified.step.name === MAINTENANCE_WORKS_STEP
+        ? "operate"
+        : "fitout";
     return (
       <PathStep
         key={key}
@@ -4020,70 +4236,7 @@ export function ProcessV20Page() {
         terminal={ctxUnit.terminal}
         zone={ctxUnit.zone}
         unit={ctxUnit}
-        quiz={
-          showQuiz
-            ? {
-                kickoffSoon: isContractor
-                  ? Boolean(activeJob.kickoffSoon)
-                  : kickoffSoonForUnit(ctxUnit),
-                state: quiz,
-                questions: quizQuestions,
-                summary: quizSummary,
-                flags: plannedFlags,
-                permitResult,
-                onStart: () => openQuizSheet(true),
-                onToggle: (questionId, optionId) => {
-                  if (officerDraft) {
-                    setOfficerDraft(
-                      toggleQuestionOption(officerDraft, questionId, optionId),
-                    );
-                    return;
-                  }
-                  if (contractorDraft) {
-                    setContractorDraft(
-                      toggleQuestionOption(contractorDraft, questionId, optionId),
-                    );
-                    return;
-                  }
-                },
-                onConfirm: () => {
-                  if (role !== "officer") return;
-                  openOfficerConfirmSheet();
-                },
-                onCancel: () => {
-                  setOfficerDraft(null);
-                  if (role === "officer" && quiz.status === "editing") {
-                    persistQuiz({
-                      status: "done",
-                      answers: quiz.answers,
-                      confirmed: quiz.confirmed,
-                    });
-                  }
-                },
-                onEdit: () => {
-                  if (role === "officer") {
-                    if (quizIsConfirmed(quiz)) {
-                      openQuizSheet(true);
-                      return;
-                    }
-                    returnToConfirm.current = false;
-                    openOfficerQuizSheet();
-                    return;
-                  }
-                  openQuizSheet(true);
-                },
-                onOpenQuiz: (edit = true) => {
-                  openQuizSheet(edit);
-                },
-                onApplySlugs: (slugs) => {
-                  persistQuiz(applySlugsToQuiz(quiz, slugs, ctxUnit));
-                },
-                onDismissSlugs: (slugs) => {
-                  persistQuiz(dismissSlugsFromQuiz(quiz, slugs, ctxUnit));
-                },
-              }
-            : null
-        }
+        quiz={showQuiz ? quizBundleFor(cardScope) : null}
         onPreviewDoc={setPreviewDocId}
       />
     );
@@ -4226,13 +4379,15 @@ export function ProcessV20Page() {
       {showQuiz && isOfficer && (
         <OfficerEditGate
           open={officerEditGateOpen}
-          onConfirm={openOfficerQuizSheet}
+          scope={quizScope}
+          onConfirm={() => openOfficerQuizSheet(quizScope)}
           onClose={() => setOfficerEditGateOpen(false)}
         />
       )}
       {showQuiz && isOfficer && (
         <OfficerConfirmSheet
           open={officerConfirmOpen}
+          scope={quizScope}
           rows={officerReviewRows}
           onClose={() => setOfficerConfirmOpen(false)}
           onEdit={openOfficerDecideFromConfirm}
@@ -4243,6 +4398,7 @@ export function ProcessV20Page() {
       {showQuiz && isOfficer && (
         <OfficerLockGate
           open={officerLockGateOpen}
+          scope={quizScope}
           openCount={officerOpenCount}
           onClose={() => setOfficerLockGateOpen(false)}
           onEdit={openOfficerDecideFromConfirm}
@@ -4251,39 +4407,52 @@ export function ProcessV20Page() {
       {showQuiz && isOfficer && (
         <OfficerLockToast
           open={officerLockToastOpen}
+          scope={quizScope}
           onClose={() => setOfficerLockToastOpen(false)}
         />
       )}
       {showQuiz &&
-        (isOfficer || (isContractor && quizCanWrite(role, quiz))) && (
+        (isOfficer ||
+          (isContractor && quizCanWrite(role, scopedQuiz(quizScope)))) && (
         <PlannedWorksSheet
           open={quizSheetOpen}
+          scope={quizScope}
           questions={quizQuestions}
           state={
             isOfficer
-              ? (officerDraft ?? quiz)
-              : (contractorDraft ?? quiz)
+              ? (officerDraft ?? scopedQuiz(quizScope))
+              : (contractorDraft ?? scopedQuiz(quizScope))
           }
           allowUnsure={!isOfficer}
           onToggle={(questionId, optionId) => {
             if (isOfficer) {
               setOfficerDraft((draft) =>
-                toggleQuestionOption(draft ?? quiz, questionId, optionId),
+                toggleQuestionOption(
+                  draft ?? scopedQuiz(quizScope),
+                  questionId,
+                  optionId,
+                ),
               );
               return;
             }
             setContractorDraft((draft) =>
-              toggleQuestionOption(draft ?? quiz, questionId, optionId),
+              toggleQuestionOption(
+                draft ?? scopedQuiz(quizScope),
+                questionId,
+                optionId,
+              ),
             );
           }}
           onSave={() => {
             if (isOfficer) {
-              const src = officerDraft ?? quiz;
-              persistQuiz(
+              const current = scopedQuiz(quizScope);
+              const src = officerDraft ?? current;
+              persistFor(
+                quizScope,
                 settleQuizWrite(
                   {
                     ...src,
-                    confirmed: Boolean(quiz.confirmed),
+                    confirmed: Boolean(current.confirmed),
                   },
                   ctxUnit,
                 ),
@@ -4296,8 +4465,9 @@ export function ProcessV20Page() {
               }
               return;
             }
-            persistQuiz(
-              settleQuizWrite(contractorDraft ?? quiz, ctxUnit),
+            persistFor(
+              quizScope,
+              settleQuizWrite(contractorDraft ?? scopedQuiz(quizScope), ctxUnit),
             );
             setContractorDraft(null);
             setQuizSheetOpen(false);
@@ -4871,6 +5041,7 @@ function PathStep({
   terminal: string;
   zone: string;
   quiz: {
+    scope?: QuizScope;
     kickoffSoon: boolean;
     state: QuizState;
     questions: QuizQuestion[];
@@ -4888,6 +5059,7 @@ function PathStep({
   } | null;
   onPreviewDoc: (id: string) => void;
 }) {
+  const quizCopy = quizUiCopy(quiz?.scope ?? "fitout");
   const { step, mine, others, flow } = classified;
   const notes = notesYouFollow(mine, others, role);
   const purpose = stepWhat(step, role);
@@ -4942,7 +5114,10 @@ function PathStep({
     );
     return [...own, ...extra.filter((d) => !seen.has(d.id) && seen.add(d.id))];
   }, [step.name, packMembers, tenancyType, terminal, zone, stageName]);
-  const hostsQuiz = Boolean(quiz) && step.name === QUIZ_STEP_NAME;
+  const hostsQuiz =
+    Boolean(quiz) &&
+    (step.name === QUIZ_STEP_NAME || step.name === MAINTENANCE_WORKS_STEP);
+  const hideScreener = quiz?.scope === "operate";
   const hostsKickoff =
     stageName === KICKOFF_STAGE_NAME && step.name === KICKOFF_STEP_NAME;
   const hostsPostKickoffPack =
@@ -5141,7 +5316,9 @@ function PathStep({
     (quizStatus === "idle" || quizStatus === "paused");
   const showContractorDoneSticky =
     hideContractorDoneBanner && Boolean(quiz) && hostsQuiz;
-  const nudgeSticky = quiz ? quizStickyCopy(quiz.state, unit, role) : null;
+  const nudgeSticky = quiz
+    ? quizStickyCopy(quiz.state, unit, role, quiz.scope ?? "fitout")
+    : null;
   const nudgeProgress = quiz ? quizProgress(quiz.state, unit) : null;
   const certainty = stepCertainty(step, quiz?.flags ?? null);
   const showPossible =
@@ -5183,6 +5360,7 @@ function PathStep({
   const showContractorScreenerCta =
     role === "contractor" &&
     confirmed &&
+    !hideScreener &&
     (isPtwPack || hostsPostKickoffPack);
   const showCardFooter =
     (showLinkedWorks && !hideContractorDoneBanner) ||
@@ -5474,7 +5652,9 @@ function PathStep({
                         highlightedDocId={highlightDocId}
                         onPreview={onPreviewDoc}
                       />
-                      {role !== "contractor" ? <ScreenerCta role={role} /> : null}
+                      {role !== "contractor" && !hideScreener ? (
+                        <ScreenerCta role={role} />
+                      ) : null}
                     </>
                   ) : officerPending ? (
                     <QuizAnswerReview rows={reviewRows} />
@@ -5544,12 +5724,17 @@ function PathStep({
                         highlightedDocId={highlightDocId}
                         onPreview={onPreviewDoc}
                       />
-                      {role !== "contractor" ? <ScreenerCta role={role} /> : null}
+                      {role !== "contractor" && !hideScreener ? (
+                        <ScreenerCta role={role} />
+                      ) : null}
                     </>
                   ) : (
                     <QuizAnswerReview rows={reviewRows} />
                   )}
-                  {confirmed && !permitResult && role !== "contractor" ? (
+                  {confirmed &&
+                  !permitResult &&
+                  role !== "contractor" &&
+                  !hideScreener ? (
                     <ScreenerCta role={role} />
                   ) : null}
                 </div>
