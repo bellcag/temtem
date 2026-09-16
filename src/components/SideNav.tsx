@@ -1,16 +1,7 @@
 import { NavLink, useLocation, useNavigate } from "react-router-dom";
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useApp, type Role } from "@/lib/app-state";
 import { DEMO_EMAILS } from "@/lib/auth-accounts";
-import { jobById, readSavedJobId } from "@/lib/process-job-context";
-import {
-  applyWorksDemoStory,
-  readWorksDemoStory,
-  WORKS_CHANGED_EVENT,
-  WORKS_DEMO_STORIES,
-  WORKS_HREF,
-  type WorksDemoStory,
-} from "@/lib/process-works-jobs";
 import { TENANT, OFFICER, CONTRACTOR } from "@/lib/tenancy-data";
 import { cn } from "@/lib/utils";
 
@@ -38,7 +29,11 @@ const NAV_PRIMARY: NavItem[] = [
     to: "/process",
     label: "Process",
     icon: "process",
-    match: (path) => path === "/process" || path.startsWith("/process-"),
+    match: (path) =>
+      path === "/process" ||
+      path.startsWith("/process-") ||
+      path === "/works" ||
+      path === "/idea",
   },
   { to: "/documents", label: "Documents", icon: "documents" },
   {
@@ -179,36 +174,10 @@ export function SideNav({
   collapsed?: boolean;
   onToggleCollapse?: () => void;
 }) {
-  const { role, setRole, signOut, unit, effectiveUnit } = useApp();
+  const { role, setRole, signOut } = useApp();
   const location = useLocation();
   const navigate = useNavigate();
   const [roleOpen, setRoleOpen] = useState(false);
-  const [demoStory, setDemoStory] = useState<WorksDemoStory | null>(null);
-
-  useEffect(() => {
-    const refresh = () => setDemoStory(readWorksDemoStory());
-    refresh();
-    window.addEventListener(WORKS_CHANGED_EVENT, refresh);
-    window.addEventListener("storage", refresh);
-    return () => {
-      window.removeEventListener(WORKS_CHANGED_EVENT, refresh);
-      window.removeEventListener("storage", refresh);
-    };
-  }, []);
-
-  const demoUnitId = () => {
-    if (role === "officer") return (effectiveUnit ?? unit).id;
-    if (role === "contractor") return jobById(readSavedJobId()).unit.id;
-    return unit.id;
-  };
-
-  const applyDemoStory = (story: WorksDemoStory) => {
-    applyWorksDemoStory(demoUnitId(), story);
-    setDemoStory(story);
-    setRoleOpen(false);
-    onNavigate?.();
-    navigate(WORKS_HREF);
-  };
 
   const userLabel =
     role === "officer"
@@ -354,28 +323,6 @@ export function SideNav({
                     )}
                   >
                     {r.label}
-                  </button>
-                </li>
-              ))}
-              <li className="mx-3 my-1 h-px bg-grey-100" aria-hidden />
-              <li className="px-3 pb-1 pt-1 text-xs leading-4 font-bold uppercase tracking-[0.08em] text-grey-400">
-                Reset Works
-              </li>
-              {WORKS_DEMO_STORIES.map((story) => (
-                <li key={story.id}>
-                  <button
-                    type="button"
-                    role="option"
-                    aria-selected={demoStory === story.id}
-                    onClick={() => applyDemoStory(story.id)}
-                    className={cn(
-                      "w-full px-3 py-2 text-left text-sm leading-[18px]",
-                      demoStory === story.id
-                        ? "bg-purple-100 font-bold text-purple-700"
-                        : "text-grey-900 hover:bg-grey-50",
-                    )}
-                  >
-                    {story.label}
                   </button>
                 </li>
               ))}

@@ -8,7 +8,6 @@ import {
   useLocation,
 } from "react-router-dom";
 import { AppStateProvider, useApp } from "@/lib/app-state";
-import { archivedProcessPreviews } from "@/lib/archived-process-preview";
 import { AppShell } from "@/components/AppShell";
 import { DashboardPage } from "@/pages/Dashboard";
 import { LoginPage } from "@/pages/Login";
@@ -25,35 +24,8 @@ import {
   ScreenerHistoryPage,
 } from "@/pages/Screener";
 
-const ProcessV16Page = lazy(() =>
-  import("@/pages/ProcessV16").then((m) => ({ default: m.ProcessV16Page })),
-);
-const ProcessV17Page = lazy(() =>
-  import("@/pages/ProcessV17").then((m) => ({ default: m.ProcessV17Page })),
-);
-const ProcessV18Page = lazy(() =>
-  import("@/pages/ProcessV18").then((m) => ({ default: m.ProcessV18Page })),
-);
-const ProcessV19Page = lazy(() =>
-  import("@/pages/ProcessV19").then((m) => ({ default: m.ProcessV19Page })),
-);
 const ProcessV20Page = lazy(() =>
   import("@/pages/ProcessV20").then((m) => ({ default: m.ProcessV20Page })),
-);
-const ProcessV21Page = lazy(() =>
-  import("@/pages/ProcessV21").then((m) => ({ default: m.ProcessV21Page })),
-);
-const ProcessV22Page = lazy(() =>
-  import("@/pages/ProcessV22").then((m) => ({ default: m.ProcessV22Page })),
-);
-const ProcessV23Page = lazy(() =>
-  import("@/pages/ProcessV23").then((m) => ({ default: m.ProcessV23Page })),
-);
-const ProcessV24Page = lazy(() =>
-  import("@/pages/ProcessV24").then((m) => ({ default: m.ProcessV24Page })),
-);
-const WorksPage = lazy(() =>
-  import("@/pages/Works").then((m) => ({ default: m.WorksPage })),
 );
 
 function PageFallback() {
@@ -84,10 +56,10 @@ function RequireAuth() {
   return <Outlet />;
 }
 
-/** Keep ?phase= / ?chapter= so Home doors are not overwritten by lastPhase. */
-function ProcessCanonicalRedirect() {
+/** Other process URLs stay inside this v20 freeze. */
+function StayOnV20() {
   const { search } = useLocation();
-  return <Navigate to={`/process-v24${search}`} replace />;
+  return <Navigate to={`/process${search}`} replace />;
 }
 
 export default function App() {
@@ -105,24 +77,34 @@ export default function App() {
             <Route element={<RequireAuth />}>
               <Route element={<AppShell />}>
                 <Route path="home" element={<DashboardPage />} />
-                <Route path="process" element={<ProcessCanonicalRedirect />} />
-                <Route path="process-v16" element={<ProcessV16Page />} />
-                <Route path="process-v17" element={<ProcessV17Page />} />
-                <Route path="process-v18" element={<ProcessV18Page />} />
-                <Route path="process-v19" element={<ProcessV19Page />} />
+                <Route path="process" element={<ProcessV20Page />} />
                 <Route path="process-v20" element={<ProcessV20Page />} />
-                <Route path="process-v21" element={<ProcessV21Page />} />
-                <Route path="process-v22" element={<ProcessV22Page />} />
-                <Route path="process-v23" element={<ProcessV23Page />} />
-                <Route path="process-v24" element={<ProcessV24Page />} />
-                <Route path="works" element={<WorksPage />} />
-                <Route
-                  path="idea"
-                  element={<Navigate to="/works" replace />}
-                />
-                {archivedProcessPreviews.map(({ path, Page }) => (
-                  <Route key={path} path={path} element={<Page />} />
-                ))}
+                <Route path="process-v16" element={<StayOnV20 />} />
+                <Route path="process-v17" element={<StayOnV20 />} />
+                <Route path="process-v18" element={<StayOnV20 />} />
+                <Route path="process-v19" element={<StayOnV20 />} />
+                <Route path="process-v21" element={<StayOnV20 />} />
+                <Route path="process-v22" element={<StayOnV20 />} />
+                <Route path="process-v23" element={<StayOnV20 />} />
+                <Route path="process-v24" element={<StayOnV20 />} />
+                <Route path="process-v25" element={<StayOnV20 />} />
+                <Route path="works" element={<StayOnV20 />} />
+                <Route path="idea" element={<StayOnV20 />} />
+                <Route path="process-v1" element={<StayOnV20 />} />
+                <Route path="process-v2" element={<StayOnV20 />} />
+                <Route path="process-v3" element={<StayOnV20 />} />
+                <Route path="process-v4" element={<StayOnV20 />} />
+                <Route path="process-v5" element={<StayOnV20 />} />
+                <Route path="process-v6" element={<StayOnV20 />} />
+                <Route path="process-v7" element={<StayOnV20 />} />
+                <Route path="process-v8" element={<StayOnV20 />} />
+                <Route path="process-v9" element={<StayOnV20 />} />
+                <Route path="process-v10" element={<StayOnV20 />} />
+                <Route path="process-v11" element={<StayOnV20 />} />
+                <Route path="process-v12" element={<StayOnV20 />} />
+                <Route path="process-v13" element={<StayOnV20 />} />
+                <Route path="process-v14" element={<StayOnV20 />} />
+                <Route path="process-v15" element={<StayOnV20 />} />
                 <Route path="documents" element={<DocumentsPage />} />
                 <Route path="documents/:id" element={<DocumentDetailPage />} />
                 <Route path="apps" element={<AppsPage />} />
