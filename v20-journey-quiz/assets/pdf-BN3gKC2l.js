@@ -1,0 +1,1 @@
+var e=`/temtem/v20-journey-quiz/assets/pdf-BmpOGVci.svg`;export{e as t};
