@@ -10,6 +10,14 @@ export type WorksSla = {
   label: string;
   title: string;
   kind: TimingKind;
+  /** What the lead time is for — isolation, works start, hot work. */
+  about: string;
+};
+
+export type PermitSlaGroup = {
+  key: string;
+  sla: WorksSla;
+  names: string[];
 };
 
 const CATALOGUE: Record<string, { stage: string; step: string }> = {
@@ -45,6 +53,42 @@ const CATALOGUE: Record<string, { stage: string; step: string }> = {
     stage: "Reinstatement",
     step: "Takeover Meeting",
   },
+  "First design concept": {
+    stage: "Pre-Kickoff",
+    step: "High-Level Design Review",
+  },
+  "Fire permit route": {
+    stage: "Post-Kickoff",
+    step: "Confirm Fire Safety Submission Route",
+  },
+  "Fire permit assessment": {
+    stage: "Renovation",
+    step: "QP Assessment: FSC / MAA / Temporary Fire Permit",
+  },
+  "Qualified Person letter": {
+    stage: "Permit Application",
+    step: "Qualified Person Endorsed Letter of Undertaking",
+  },
+  "BIM model": {
+    stage: "Permit Application",
+    step: "BIM Model Submission",
+  },
+  "FSSD notice of approval": {
+    stage: "Renovation",
+    step: "FSSD Notice of Approval Submission",
+  },
+  "Opening FSSD notice": {
+    stage: "Opening",
+    step: "FSSD Notice of Approval Submission",
+  },
+  "Waterproofing and ponding": {
+    stage: "Renovation",
+    step: "Waterproofing Checks & Water Ponding Test",
+  },
+  "Fire safety certificate": {
+    stage: "Renovation",
+    step: "Fire Safety Certificate / MAA / Temporary Fire Permit Submission",
+  },
 };
 
 const ONECALENDAR_DEFAULT = [
@@ -56,6 +100,68 @@ const ONECALENDAR_DEFAULT = [
   "T4 catwalk access",
   "Airside work permit",
 ];
+
+/** Sourced prerequisite — not a numbered CAG review SLA. */
+const QUALITATIVE: Record<string, GuideTiming> = {
+  "First design concept": {
+    kind: "lead",
+    duration: "Before you apply",
+    binds: "contractor",
+    cite: "RR 3.6.5",
+    text: {
+      tenant:
+        "Wait for written design clearance before your contractor applies.",
+      contractor: "Wait for written design clearance before you apply.",
+      officer: "Permits wait on written design clearance.",
+    },
+  },
+  "Fire permit route": {
+    kind: "lead",
+    duration: "Before you lock the pack",
+    binds: "contractor",
+    cite: "RR 5.9",
+    text: {
+      tenant:
+        "Your contractor’s Qualified Person confirms the fire route before the pack is locked.",
+      contractor:
+        "Confirm the fire route with your Qualified Person before you lock the pack.",
+      officer: "Check the fire route is named before the pack is locked.",
+    },
+  },
+  "Qualified Person letter": {
+    kind: "lead",
+    duration: "Before permit review",
+    binds: "contractor",
+    cite: "RR 3.1(v)",
+    text: {
+      tenant: "Your contractor emails the QP letter before permit review.",
+      contractor: "Email the QP letter before permit review.",
+      officer: "Check the QP letter is in before permit review.",
+    },
+  },
+  "BIM model": {
+    kind: "lead",
+    duration: "With the permit pack",
+    binds: "contractor",
+    cite: "RR 3.7",
+    text: {
+      tenant: "Your contractor submits the BIM model with the pack when it applies.",
+      contractor: "Submit the BIM model with the pack when it applies.",
+      officer: "Check the BIM model is in with the pack when it applies.",
+    },
+  },
+  "Fire safety certificate": {
+    kind: "lead",
+    duration: "Before opening",
+    binds: "contractor",
+    cite: "RR 5.9.8(i)",
+    text: {
+      tenant: "Have the fire permit in hand before opening.",
+      contractor: "Have the fire permit in hand before opening.",
+      officer: "Check the fire permit is in hand before opening.",
+    },
+  },
+};
 
 /** Sourced prerequisite — not a numbered CAG review SLA. */
 const JOINT_SITE: GuideTiming = {
@@ -72,6 +178,14 @@ const JOINT_SITE: GuideTiming = {
       "Check the joint site inspection is booked before isolation or roof work is endorsed. You cannot waive it for urgency.",
   },
 };
+
+function slaAbout(duration: string): string {
+  const before = duration.match(/\bbefore\s+(.+)$/i);
+  if (before) return before[1];
+  const after = duration.match(/\bafter\s+(.+)$/i);
+  if (after) return after[1];
+  return "";
+}
 
 function slaLabel(duration: string, kind: TimingKind): string {
   if (/^before\b/i.test(duration)) return duration;
@@ -97,6 +211,7 @@ function toSla(row: GuideTiming): WorksSla {
     label: slaLabel(row.duration, row.kind),
     title: slaTitle(row),
     kind: row.kind,
+    about: slaAbout(row.duration),
   };
 }
 
@@ -139,6 +254,54 @@ export function governingSlaForPermits(
   return best;
 }
 
+export function packSlasForPermits(
+  names: string[],
+  unit: Unit,
+  role: Role,
+): WorksSla[] {
+  const seen = new Set<string>();
+  const out: WorksSla[] = [];
+  for (const name of names) {
+    for (const row of slaForWorksItem(name, unit, role)) {
+      if (seen.has(row.label)) continue;
+      seen.add(row.label);
+      out.push(row);
+    }
+  }
+  return out.sort((a, b) => slaRank(b.label) - slaRank(a.label));
+}
+
+const PACK_FALLBACK: WorksSla = {
+  label: "With the pack",
+  title: "No separate apply-by — submit with the Tenancy Project application.",
+  kind: "lead",
+  about: "this pack",
+};
+
+export function groupPermitsBySla(
+  names: string[],
+  unit: Unit,
+  role: Role,
+): PermitSlaGroup[] {
+  const map = new Map<string, PermitSlaGroup>();
+  for (const name of names) {
+    const rows = slaForWorksItem(name, unit, role);
+    const sla =
+      rows.slice().sort((a, b) => slaRank(b.label) - slaRank(a.label))[0] ??
+      PACK_FALLBACK;
+    const key = sla.label;
+    const existing = map.get(key);
+    if (existing) {
+      existing.names.push(name);
+    } else {
+      map.set(key, { key, sla, names: [name] });
+    }
+  }
+  return [...map.values()].sort(
+    (a, b) => slaRank(b.sla.label) - slaRank(a.sla.label),
+  );
+}
+
 export function slaForWorksItem(
   name: string,
   unit: Unit,
@@ -147,10 +310,12 @@ export function slaForWorksItem(
   if (name === "Joint site inspection") return [toSla(JOINT_SITE)];
   const mapped = CATALOGUE[name];
   if (mapped) {
-    return timingsForStep(mapped.stage, mapped.step, unit, role).map(toSla);
+    const rows = timingsForStep(mapped.stage, mapped.step, unit, role).map(toSla);
+    if (rows.length > 0) return rows;
   }
   if (ONECALENDAR_DEFAULT.includes(name)) {
     return ptwLead(unit, role).map(toSla);
   }
-  return [];
+  const qualitative = QUALITATIVE[name];
+  return qualitative ? [toSla(qualitative)] : [];
 }

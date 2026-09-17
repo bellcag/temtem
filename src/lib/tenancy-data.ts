@@ -382,6 +382,16 @@ export const PHASES: Phase[] = [
               officer: "For duplex units, share a preliminary concept early so Design Management can flag issues before full drawings.",
             },
             subSteps: [
+              {
+                text: "If this unit is duplex, share a preliminary design concept with your Project Officer before drawings lock.",
+                audience: "tenant",
+                alsoText: {
+                  contractor:
+                    "If this unit is duplex, wait for Design Management feedback before treating drawings as locked.",
+                  officer:
+                    "If this unit is duplex, route the preliminary concept to Design Management.",
+                },
+              },
               { text: "Share your preliminary design concept with your Project Officer, then wait for Design Management feedback before locking the drawings.", tag: "Duplex", audience: "tenant", alsoText: { contractor: "The tenant is sharing a preliminary concept. Wait for Design Management feedback before treating drawings as locked." } },
               { text: "Route preliminary design concept to Design Management.", tag: "Duplex", audience: "officer" },
               { text: "Share preliminary design feedback with Project Officer.", tag: "Duplex", audience: "officer" },

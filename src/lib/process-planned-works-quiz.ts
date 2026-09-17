@@ -14,7 +14,7 @@ export function requestOpenPlannedWorksQuiz() {
   window.dispatchEvent(new Event(OPEN_PLANNED_WORKS_EVENT));
 }
 
-export type QuizScope = "fitout" | "operate";
+export type QuizScope = "fitout" | "setup" | "build" | "operate" | "exit";
 
 export const NONE_ID = "none";
 export const NOT_SURE_ID = "not-sure";
@@ -764,7 +764,7 @@ export function quizStickyCopy(
       tone: "quiet",
       tip: copy.stickyDoneIntro,
       track:
-        scope === "operate"
+        scope === "operate" || scope === "exit"
           ? [
               { label: "Works", state: "done" },
               { label: "Permit", state: "next" },
@@ -820,6 +820,18 @@ export function filledDemoQuiz(): QuizState {
       external: { kind: "none" },
     }),
   };
+}
+
+/** Every tickable option on for this unit — longest permit + conditional list. */
+export function maxFilledQuiz(unit: Unit): QuizState {
+  const answers = completeAnswers(EMPTY_ANSWERS);
+  for (const question of questionsForUnit(unit)) {
+    answers[question.id] = {
+      kind: "selected",
+      slugs: question.options.map((option) => option.id),
+    };
+  }
+  return { status: "done", confirmed: false, answers };
 }
 
 export function answerSummaryLines(
@@ -995,6 +1007,16 @@ export function operateQuizStorageKey(unitId: string) {
   return `tempo:v23:operate-works:${unitId}`;
 }
 
+export function quizStorageKeyFor(scope: QuizScope, unitId: string) {
+  if (scope === "exit") return `tempo:v20:works:exit:${unitId}`;
+  if (scope === "operate") return operateQuizStorageKey(unitId);
+  return quizStorageKey(unitId);
+}
+
+export function readScopedQuizState(scope: QuizScope, unitId: string): QuizState {
+  return readQuizAt(quizStorageKeyFor(scope, unitId));
+}
+
 function isQuestionId(value: string): value is QuestionId {
   return (
     value === "scope" ||
@@ -1078,6 +1100,20 @@ export function writeOperateQuizState(unitId: string, state: QuizState) {
   window.localStorage.setItem(operateQuizStorageKey(unitId), JSON.stringify(state));
   window.dispatchEvent(
     new CustomEvent(QUIZ_CHANGED_EVENT, { detail: { unitId, scope: "operate" } }),
+  );
+}
+
+export function writeScopedQuizState(
+  scope: QuizScope,
+  unitId: string,
+  state: QuizState,
+) {
+  window.localStorage.setItem(
+    quizStorageKeyFor(scope, unitId),
+    JSON.stringify(state),
+  );
+  window.dispatchEvent(
+    new CustomEvent(QUIZ_CHANGED_EVENT, { detail: { unitId, scope } }),
   );
 }
 
@@ -1345,6 +1381,8 @@ const OPERATE_QUIZ_COPY: Partial<typeof quizCopy> = {
 };
 
 export function quizUiCopy(scope: QuizScope = "fitout") {
-  if (scope !== "operate") return quizCopy;
-  return { ...quizCopy, ...OPERATE_QUIZ_COPY };
+  if (scope === "operate" || scope === "exit") {
+    return { ...quizCopy, ...OPERATE_QUIZ_COPY };
+  }
+  return quizCopy;
 }

@@ -64,6 +64,10 @@ const TITLES: Record<string, string> = {
   "Renovation::Pre-Opening Inspection": "IFM pre-opening inspection",
   "Renovation::Opening Announcement & Directory Update":
     "Store directory listing",
+  "Tenancy Platform Onboarding::Opening works": "Opening works",
+  "Handover::Fit-out works": "Fit-out works",
+  "Opening::Maintenance works": "Maintenance works",
+  "Reinstatement::Leaving works": "Leaving works",
   "Opening::Opening Document Submission": "Opening document pack",
   "Opening::FSSD Notice of Approval Submission": "Opening FSSD notice",
   "Opening::Store Opening & Capex Verification": "Store opening and capex",
@@ -188,6 +192,10 @@ const LEADS: Record<Role, Record<string, string>> = {
     "Opening::Point of Sales Data Reporting": "Get sales summary",
     "Opening::TOPAZ Account Setup": "Get TOPAZ account",
     "Operations::Regular Servicing Reporting": "Lodge service reports",
+    "Tenancy Platform Onboarding::Opening works": "Read planned works",
+    "Handover::Fit-out works": "Read planned works",
+    "Opening::Maintenance works": "Read planned works",
+    "Reinstatement::Leaving works": "Read planned works",
     "Operations::Maintenance works": "Read planned works",
     "Operations::Upcoming works": "See the list",
     "Operations::Later renovation works": "Start renovation works",
@@ -260,6 +268,10 @@ const LEADS: Record<Role, Record<string, string>> = {
       "Get fire certificates",
     "Renovation::Pre-Opening Inspection": "Attend opening inspection",
     "Opening::Store Opening & Capex Verification": "Fix flagged defects",
+    "Tenancy Platform Onboarding::Opening works": "Fill planned works",
+    "Handover::Fit-out works": "Fill planned works",
+    "Opening::Maintenance works": "Fill planned works",
+    "Reinstatement::Leaving works": "Fill planned works",
     "Operations::Maintenance works": "Fill planned works",
     "Operations::Upcoming works": "See the list",
     "Operations::Later renovation works": "Start renovation works",
@@ -334,6 +346,10 @@ const LEADS: Record<Role, Record<string, string>> = {
     "Opening::Point of Sales Data Reporting": "Pull sales summary",
     "Opening::TOPAZ Account Setup": "Create TOPAZ account",
     "Operations::Regular Servicing Reporting": "Check service reports",
+    "Tenancy Platform Onboarding::Opening works": "Check planned works",
+    "Handover::Fit-out works": "Check planned works",
+    "Opening::Maintenance works": "Check planned works",
+    "Reinstatement::Leaving works": "Check planned works",
     "Operations::Maintenance works": "Check planned works",
     "Operations::Upcoming works": "See the list",
     "Operations::Later renovation works": "Check renovation works",
@@ -569,6 +585,18 @@ const tenant: Record<string, LifeSgCard> = {
   "Operations::Regular Servicing Reporting": {
     subheader: ["Lodge service reports in TOPAZ on schedule."],
   },
+  "Tenancy Platform Onboarding::Opening works": {
+    subheader: ["Read works your contractor named."],
+  },
+  "Handover::Fit-out works": {
+    subheader: ["Read works your contractor named."],
+  },
+  "Opening::Maintenance works": {
+    subheader: ["Read works your contractor named."],
+  },
+  "Reinstatement::Leaving works": {
+    subheader: ["Read works your contractor named."],
+  },
   "Operations::Maintenance works": {
     subheader: ["Read works your contractor named."],
   },
@@ -787,6 +815,18 @@ const contractor: Record<string, LifeSgCard> = {
   },
   "Opening::Store Opening & Capex Verification": {
     subheader: ["Fix defects from IFM comments before opening."],
+  },
+  "Tenancy Platform Onboarding::Opening works": {
+    subheader: ["Fill planned works for this job."],
+  },
+  "Handover::Fit-out works": {
+    subheader: ["Fill planned works for this job."],
+  },
+  "Opening::Maintenance works": {
+    subheader: ["Fill planned works for this job."],
+  },
+  "Reinstatement::Leaving works": {
+    subheader: ["Fill planned works for this job."],
   },
   "Operations::Maintenance works": {
     subheader: ["Fill planned works for this job."],
@@ -1048,6 +1088,18 @@ const officer: Record<string, LifeSgCard> = {
   "Operations::Regular Servicing Reporting": {
     subheader: ["Check IFM approved service reports in TOPAZ."],
     hideOnlyIf: true,
+  },
+  "Tenancy Platform Onboarding::Opening works": {
+    subheader: ["Fill or check planned works."],
+  },
+  "Handover::Fit-out works": {
+    subheader: ["Fill or check planned works."],
+  },
+  "Opening::Maintenance works": {
+    subheader: ["Fill or check planned works."],
+  },
+  "Reinstatement::Leaving works": {
+    subheader: ["Fill or check planned works."],
   },
   "Operations::Maintenance works": {
     subheader: ["Fill or check planned works."],

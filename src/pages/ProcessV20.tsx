@@ -51,6 +51,19 @@ import {
   type TimingKind,
 } from "@/lib/process-rules-v6";
 import { splitStepDocs, verbForDoc } from "@/lib/process-v12-docs";
+import { worksStepGuideFor } from "@/lib/process-works-step-guide";
+import {
+  governingSlaForPermits,
+  groupPermitsBySla,
+  slaForWorksItem,
+  type WorksSla,
+} from "@/lib/process-works-sla";
+import {
+  worksApplyIntro,
+  worksApplyOrderFor,
+  worksApplyStepCopy,
+  worksApplyWhy,
+} from "@/lib/process-works-apply-order";
 import { permitExplainFor } from "@/lib/process-permit-explain";
 import {
   EMPTY_SUPPORTING_DOCS,
@@ -59,6 +72,7 @@ import {
 } from "@/lib/process-permit-supporting-docs";
 import {
   foldPtwPackSteps,
+  isPtwPackStep,
   PTW_PACK_HOST,
   PTW_PACK_TYPES_LABEL,
 } from "@/lib/process-ptw-pack";
@@ -79,10 +93,11 @@ import {
   injectPlannedWorksQuiz,
   isOptionOn,
   filledDemoQuiz,
+  maxFilledQuiz,
   midwayDemoQuiz,
   questionHasAnswer,
   quizUiCopy,
-  readOperateQuizState,
+  readScopedQuizState,
   KICKOFF_STAGE_NAME,
   KICKOFF_STEP_NAME,
   NONE_ID,
@@ -104,14 +119,10 @@ import {
   type QuizEditMode,
   type QuizPermitResult,
   type QuizReviewRow,
-  QUIZ_STAGE_NAME,
-  QUIZ_STEP_NAME,
-  readQuizState,
   slugFlags,
   stepCertainty,
   toggleQuestionOption,
-  writeOperateQuizState,
-  writeQuizState,
+  writeScopedQuizState,
   type QuestionId,
   type QuizQuestion,
   type QuizScope,
@@ -141,37 +152,98 @@ import writeFormsIcon from "@/assets/figma/write-forms.svg";
 const LS_KEY = "tempo:v17:lastPhase";
 
 export const MAINTENANCE_WORKS_STEP = "Maintenance works";
-const MAINTENANCE_WORKS_STAGE = "Operations";
+const OPENING_WORKS_STEP = "Opening works";
+const FITOUT_WORKS_STEP = "Fit-out works";
+const LEAVING_WORKS_STEP = "Leaving works";
+type PhaseQuizScope = Extract<Phase["id"], "setup" | "build" | "operate" | "exit">;
 
-const MAINTENANCE_WORKS_CATALOGUE: Step = {
-  name: MAINTENANCE_WORKS_STEP,
-  responsible: "You",
-  what: "Name planned works when the unit needs repair or refresh after opening.",
-  whatFor: {
-    tenant: "Read the planned works answers when the unit needs repair or refresh.",
-    contractor: "Fill planned works when the unit needs repair or refresh.",
-    officer: "Check planned works when the unit needs repair or refresh.",
+const WORKS_DOOR_BY_PHASE: Record<
+  PhaseQuizScope,
+  { name: string; when: string }
+> = {
+  setup: {
+    name: OPENING_WORKS_STEP,
+    when: "before handover",
   },
-  subSteps: [
-    {
-      text: "Read the planned works answers.",
-      audience: "tenant",
-      alsoText: {
-        contractor: "Fill planned works for these after-opening works.",
-        officer: "Check planned works for these after-opening works.",
-      },
-    },
-    {
-      text: "Fill planned works for these after-opening works.",
-      audience: "contractor",
-    },
-    {
-      text: "Fill or check planned works for these after-opening works.",
-      audience: "officer",
-    },
-  ],
-  people: ["Contractor", "Project Officer"],
+  build: {
+    name: FITOUT_WORKS_STEP,
+    when: "in first fit-out",
+  },
+  operate: {
+    name: MAINTENANCE_WORKS_STEP,
+    when: "after opening",
+  },
+  exit: {
+    name: LEAVING_WORKS_STEP,
+    when: "when the tenant leaves",
+  },
 };
+
+const WORKS_DOOR_NAMES = new Set(
+  Object.values(WORKS_DOOR_BY_PHASE).map((door) => door.name),
+);
+
+function isWorksDoorName(name: string) {
+  return WORKS_DOOR_NAMES.has(name);
+}
+
+function phaseQuizScope(scope: QuizScope | Phase["id"]): PhaseQuizScope {
+  if (scope === "operate") return "operate";
+  if (scope === "exit") return "exit";
+  return "setup";
+}
+
+function scopeForWorksDoor(name: string): QuizScope {
+  if (name === FITOUT_WORKS_STEP) return "build";
+  if (name === MAINTENANCE_WORKS_STEP) return "operate";
+  if (name === LEAVING_WORKS_STEP) return "exit";
+  return "setup";
+}
+
+function worksDoorCatalogue(phaseId: PhaseQuizScope): Step {
+  const door = WORKS_DOOR_BY_PHASE[phaseId];
+  return {
+    name: door.name,
+    responsible: "You",
+    what: `Name planned works ${door.when}.`,
+    whatFor: {
+      tenant: `Read the planned works answers ${door.when}.`,
+      contractor: `Fill planned works ${door.when}.`,
+      officer: `Check planned works ${door.when}.`,
+    },
+    subSteps: [
+      {
+        text: "Read the planned works answers.",
+        audience: "tenant",
+        alsoText: {
+          contractor: `Fill planned works ${door.when}.`,
+          officer: `Check planned works ${door.when}.`,
+        },
+      },
+      {
+        text: `Fill planned works ${door.when}.`,
+        audience: "contractor",
+      },
+      {
+        text: `Fill or check planned works ${door.when}.`,
+        audience: "officer",
+      },
+    ],
+    people: ["Contractor", "Project Officer"],
+  };
+}
+
+const EMPTY_QUIZZES: Record<PhaseQuizScope, QuizState> = {
+  setup: EMPTY_QUIZ,
+  build: EMPTY_QUIZ,
+  operate: EMPTY_QUIZ,
+  exit: EMPTY_QUIZ,
+};
+
+function foldsOffWorksRail(step: Step) {
+  if (isWorksDoorName(step.name)) return false;
+  return isPtwPackStep(step.name) || Boolean(step.whenSlugs?.length);
+}
 
 /** Runway All Caps — 12/16 Bold, Grey/400. Swimlane and section labels. */
 const LABEL_CAPS =
@@ -723,6 +795,12 @@ function shortTimingLabel(
     .replace(/\s+weekdays$/i, "")
     .replace(/\s+to replace$/i, "")
     .trim();
+  if (kind === "lead" && /^before\b/i.test(duration)) {
+    return duration;
+  }
+  if (kind === "lead" && /^after\b/i.test(duration)) {
+    return duration;
+  }
   if (kind === "lead" && /\bbefore\b/i.test(duration)) {
     const amount = leadAmount(duration);
     return keepWhen ? `${amount} before` : amount;
@@ -1501,6 +1579,7 @@ function WorksSticky({
   total = 0,
   track,
   tip,
+  compact = false,
   onOpen,
 }: {
   title: string;
@@ -1510,6 +1589,7 @@ function WorksSticky({
   total?: number;
   track?: QuizStickyTrackStep[];
   tip?: string;
+  compact?: boolean;
   onOpen: () => void;
 }) {
   const tipId = useId();
@@ -1548,7 +1628,9 @@ function WorksSticky({
       <div
         className={cn(
           "relative flex w-full items-center rounded-[var(--radius-2xl)] shadow-[var(--shadow-light-bg)]",
-          milestone
+          milestone && compact
+            ? "h-14 gap-3 px-4 py-3 border border-grey-200 bg-white hover:bg-grey-50"
+            : milestone
             ? "min-h-[76px] gap-3 px-4 py-4 desktop:gap-4 desktop:p-4 border border-grey-200 bg-white hover:bg-grey-50"
             : finished
               ? "min-h-[76px] gap-3 px-4 py-3 desktop:gap-4 desktop:p-4 bg-purple-100 hover:bg-purple-200"
@@ -1598,7 +1680,7 @@ function WorksSticky({
         <span
           className={cn(
             "pointer-events-none relative flex min-w-0 flex-1 flex-col",
-            milestone ? "gap-3" : "gap-1",
+            milestone && !compact ? "gap-3" : "gap-1",
           )}
         >
           <span
@@ -1657,10 +1739,14 @@ function WorksSticky({
               </DlsTooltip>
             </span>
           </span>
-          {milestone && track ? (
+          {milestone && track && !compact ? (
             <span className="flex flex-col gap-4">
               <span className="text-xs leading-4 text-grey-700">{subtitle}</span>
               <SetupTrack steps={track} />
+            </span>
+          ) : milestone && compact ? (
+            <span className="truncate text-xs leading-4 text-grey-700">
+              {subtitle}
             </span>
           ) : (
           <span className="flex items-center gap-2" aria-hidden>
@@ -2296,6 +2382,15 @@ function OfficerLockToast({
   );
 }
 
+function usefulPermitWhy(why: string): string | undefined {
+  const t = why.trim();
+  if (!t) return undefined;
+  // Unit is already known from the signed-in tenancy.
+  if (/^This unit is\b/i.test(t)) return undefined;
+  if (/^Not used at\b/i.test(t)) return undefined;
+  return t;
+}
+
 function PermitExplainStep({
   n,
   children,
@@ -2316,9 +2411,7 @@ function PermitExplainStep({
       <div className="min-w-0 flex-1 pt-0.5">
         <p className="text-sm leading-[18px] text-black">{children}</p>
         {note ? (
-          <p className="mt-2 inline-flex max-w-full rounded-full bg-purple-100 px-3 py-1 text-sm leading-[18px] text-purple-700">
-            {note}
-          </p>
+          <p className="mt-1 text-sm leading-[18px] text-grey-600">{note}</p>
         ) : null}
       </div>
     </li>
@@ -2362,7 +2455,7 @@ function PermitExplainBody({
   );
   if (!explain) return null;
   const other = explain.otherTerminals?.(unit) ?? null;
-  const why = explain.why(unit);
+  const why = usefulPermitWhy(explain.why(unit));
   return (
     <div className="flex flex-col gap-4">
       {(action || timing) && (
@@ -2417,24 +2510,32 @@ function PermitExplainBody({
             {EMPTY_SUPPORTING_DOCS}
           </p>
         ) : (
-          <ol className="flex list-none flex-col gap-2 text-sm leading-[18px] text-black">
-            {supporting.docs.map((doc) => (
-              <li key={doc.name} className="flex items-center gap-1.5">
-                <span className="font-bold">{doc.name}</span>
-                <span className="inline-flex shrink-0" aria-hidden>
-                  <IconLeaf
-                    src={dotIcon}
-                    leafW={5.33}
-                    leafH={5.33}
-                    frame={16}
-                  />
-                </span>
-                <span className="text-grey-600">
-                  {needLabelCompact(doc.need)}
-                </span>
-              </li>
-            ))}
-          </ol>
+          <ul className="overflow-hidden rounded-[var(--radius-md)] border border-grey-100 bg-white">
+            {supporting.docs.map((doc) => {
+              const optional =
+                doc.need === "optional" || doc.need === "rr-if-applies";
+              return (
+                <li
+                  key={doc.name}
+                  className="flex items-start gap-3 border-t border-grey-100 px-3 py-2.5 first:border-t-0"
+                >
+                  <span className="min-w-0 flex-1 text-sm leading-[18px] font-bold text-black">
+                    {doc.name}
+                  </span>
+                  <span
+                    className={cn(
+                      "inline-flex h-6 shrink-0 items-center rounded-[var(--radius-sm)] border px-1.5 text-xs leading-4 font-bold",
+                      optional
+                        ? "border-grey-200 text-grey-600"
+                        : "border-grey-200 text-grey-700",
+                    )}
+                  >
+                    {needLabelCompact(doc.need)}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
         )}
       </FieldSection>
       {samples.length > 0 && (
@@ -2827,6 +2928,11 @@ function permitListCaveat(role: Role, confirmed: boolean) {
   return quizCopy.resultsCaveat;
 }
 
+function slaAboutLabel(about: string) {
+  if (!about) return "";
+  return about.charAt(0).toUpperCase() + about.slice(1);
+}
+
 function PermitList({
   result,
   unit,
@@ -2842,36 +2948,619 @@ function PermitList({
   highlightedDocId?: string | null;
   onPreview: (id: string) => void;
 }) {
+  const names = [result.main, ...result.extras];
+  const groups = groupPermitsBySla(names, unit, role);
+  const collapsible = groups.length > 1;
+  const [openKeys, setOpenKeys] = useState<string[]>(() =>
+    groups[0] ? [groups[0].key] : [],
+  );
+  const rowFor = (name: string) => (
+    <PermitNameRow
+      key={name}
+      name={name}
+      unit={unit}
+      role={role}
+      stageName={stageName}
+      highlightedDocId={highlightedDocId}
+      onPreview={onPreview}
+      badge={name === result.main ? quizCopy.alwaysNeededChip : undefined}
+    />
+  );
   return (
-    <div className="flex flex-col gap-2">
-      <ul className="overflow-hidden rounded-[var(--radius-md)] border border-grey-100 bg-white">
-        <PermitNameRow
-          name={result.main}
-          unit={unit}
-          role={role}
-          stageName={stageName}
-          highlightedDocId={highlightedDocId}
-          onPreview={onPreview}
-          badge={quizCopy.alwaysNeededChip}
-        />
-        {result.extras.map((name) => (
-          <PermitNameRow
-            key={name}
-            name={name}
-            unit={unit}
-            role={role}
-            stageName={stageName}
-            highlightedDocId={highlightedDocId}
-            onPreview={onPreview}
-          />
-        ))}
-      </ul>
+    <div className="flex flex-col gap-3">
+      {groups.map((group) => {
+        const open = !collapsible || openKeys.includes(group.key);
+        const about = slaAboutLabel(group.sla.about);
+        const count = group.names.length;
+        const summary =
+          count === 1
+            ? about || group.names[0]
+            : about
+              ? `${about} · ${count}`
+              : `${count} permits`;
+        return (
+          <div
+            key={group.key}
+            className="overflow-hidden rounded-[var(--radius-md)] border border-grey-100 bg-white"
+          >
+            {collapsible ? (
+              <button
+                type="button"
+                aria-expanded={open}
+                onClick={() =>
+                  setOpenKeys((keys) =>
+                    keys.includes(group.key)
+                      ? keys.filter((key) => key !== group.key)
+                      : [...keys, group.key],
+                  )
+                }
+                className="flex w-full min-w-0 items-center gap-2 px-3 py-2.5 text-left hover:bg-grey-50 focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--color-purple-600)]"
+              >
+                <span className="min-w-0 flex-1">
+                  <WhenChip duration={group.sla.label} kind={group.sla.kind} />
+                </span>
+                <span className="text-sm leading-[18px] font-bold text-grey-700">
+                  {summary}
+                </span>
+                <span className="inline-flex shrink-0 text-grey-500" aria-hidden>
+                  <IconLeaf
+                    src={caretDown}
+                    leafW={10}
+                    leafH={5.83}
+                    frame={16}
+                    rotate={open ? 0 : -90}
+                    colorClass="text-grey-500"
+                  />
+                </span>
+              </button>
+            ) : (
+              <div className="flex items-center gap-2 px-3 py-2.5">
+                <WhenChip duration={group.sla.label} kind={group.sla.kind} />
+                {about ? (
+                  <span className="text-sm leading-[18px] font-bold text-grey-700">
+                    {about}
+                  </span>
+                ) : null}
+              </div>
+            )}
+            {open ? (
+              <ul className="border-t border-grey-100">{group.names.map(rowFor)}</ul>
+            ) : null}
+          </div>
+        );
+      })}
       <p className="text-sm leading-[18px] text-grey-600">
         {result.extras.length > 0
           ? permitListCaveat(role, result.confirmed)
           : quizCopy.resultsMainOnly}
       </p>
     </div>
+  );
+}
+
+function foldedBecauseLabels(
+  step: Step,
+  flags: Record<PlannedWorkSlug, SlugFlag> | null,
+  unit: Unit,
+) {
+  if (!flags || !step.whenSlugs?.length) return [];
+  const labels: string[] = [];
+  for (const question of questionsForUnit(unit)) {
+    for (const option of question.options) {
+      if (
+        step.whenSlugs.includes(option.id) &&
+        flags[option.id] === "on" &&
+        !labels.includes(option.label)
+      ) {
+        labels.push(option.label);
+      }
+    }
+  }
+  return labels;
+}
+
+function FoldedWorkDetail({
+  item,
+  role,
+  unit,
+  flags,
+  highlightedDocId,
+  onPreview,
+}: {
+  item: FoldedWork;
+  role: Role;
+  unit: Unit;
+  flags: Record<PlannedWorkSlug, SlugFlag> | null;
+  highlightedDocId?: string | null;
+  onPreview: (id: string) => void;
+}) {
+  const { step, mine, others, flow } = item.classified;
+  const title = cardTitle(role, item.stageName, step.name);
+  const because = foldedBecauseLabels(step, flags, unit);
+  const guide = worksStepGuideFor(title, role, because, unit);
+  const notes = notesYouFollow(mine, others, role);
+  const { sequential, parallel, nested } = groupGuideBlocks(notes);
+  const lineOf = (s: (typeof notes)[number]) => displayText(s, true, role);
+  const howRows = [...sequential, ...parallel]
+    .map((s) => {
+      const line = lineOf(s);
+      if (!line) return null;
+      return { line, labels: actorLabelsForSub(s.audience, role) };
+    })
+    .filter((row): row is { line: string; labels: string[] } => Boolean(row));
+  const onlyIf = nested
+    .map((s) => ({
+      workIf: s.workIf ?? "",
+      line: lineOf(s),
+    }))
+    .filter((row): row is { workIf: string; line: string } => Boolean(row.line));
+  const whenRows = timingsForStep(item.stageName, step.name, unit, role);
+  const sla = slaForWorksItem(title, unit, role);
+  const docs = docsForStep(
+    step.name,
+    unit.tenancyType,
+    unit.terminal,
+    unit.zone,
+    item.stageName,
+  );
+  const { guides, samples } = splitStepDocs(docs);
+  const systems = systemsVisibleToRole(step.systems ?? [], role);
+  const party = role === "officer" ? cardActor(flow, role) : null;
+
+  return (
+    <div className="flex flex-col gap-4">
+      {guide && (
+        <>
+          <FieldSection label="Who does this">
+            <p className="text-sm leading-[18px] text-grey-700">{guide.who}</p>
+          </FieldSection>
+          {guide.how.length > 0 && (
+            <FieldSection label="How">
+              <div className="flex flex-col gap-2">
+                {guide.how.map((line) => (
+                  <p key={line} className="text-sm leading-[18px] text-grey-700">
+                    {line}
+                  </p>
+                ))}
+              </div>
+            </FieldSection>
+          )}
+        </>
+      )}
+      {because.length > 0 && (
+        <FieldSection label="Because you agreed">
+          <div className="flex flex-wrap gap-2">
+            {because.map((label) => (
+              <span
+                key={label}
+                className="inline-flex min-h-6 items-center rounded-[var(--radius-sm)] border border-grey-200 bg-white px-1.5 py-1 text-xs leading-4 font-bold text-grey-700"
+              >
+                {label}
+              </span>
+            ))}
+          </div>
+        </FieldSection>
+      )}
+      {whenRows.length > 0 ? (
+        <WhenChips rows={whenRows} role={role} />
+      ) : sla.length > 0 ? (
+        <ul className="flex flex-wrap gap-1.5">
+          {sla.map((row) => (
+            <li key={row.label}>
+              <WhenChip duration={row.label} kind={row.kind} />
+            </li>
+          ))}
+        </ul>
+      ) : null}
+      {howRows.length > 0 && (
+        <PartyLineList
+          rows={howRows.map((row) => ({
+            line: row.line,
+            labels: party ? row.labels : undefined,
+          }))}
+        />
+      )}
+      {onlyIf.length > 0 && (
+        <FieldSection label="Only if">
+          <ul className="flex flex-col gap-2">
+            {onlyIf.map((row) => (
+              <li key={`${row.workIf}-${row.line}`} className="flex flex-col gap-0.5">
+                {row.workIf ? (
+                  <p className="text-xs leading-4 font-bold text-grey-500">
+                    {row.workIf}
+                  </p>
+                ) : null}
+                <p className="text-sm leading-[18px] text-grey-700">{row.line}</p>
+              </li>
+            ))}
+          </ul>
+        </FieldSection>
+      )}
+      <SystemTypeGroup
+        systems={systems}
+        stageName={item.stageName}
+        stepName={step.name}
+      />
+      <DocTypeGroup
+        label="Guides"
+        docs={guides}
+        stageName={item.stageName}
+        stepName={step.name}
+        highlightedDocId={highlightedDocId}
+        onPreview={onPreview}
+        flush
+      />
+      <DocTypeGroup
+        label="Samples"
+        docs={samples}
+        stageName={item.stageName}
+        stepName={step.name}
+        highlightedDocId={highlightedDocId}
+        onPreview={onPreview}
+        flush
+      />
+    </div>
+  );
+}
+
+function FoldedWorkRow({
+  item,
+  role,
+  unit,
+  flags,
+  highlightedDocId,
+  onPreview,
+}: {
+  item: FoldedWork;
+  role: Role;
+  unit: Unit;
+  flags: Record<PlannedWorkSlug, SlugFlag> | null;
+  highlightedDocId?: string | null;
+  onPreview: (id: string) => void;
+}) {
+  const titleId = useId();
+  const [open, setOpen] = useState(false);
+  const title = cardTitle(role, item.stageName, item.classified.step.name);
+  const itemLead =
+    cardLead(role, item.stageName, item.classified.step.name) ??
+    stepWhat(item.classified.step, role);
+  return (
+    <li className="border-t border-grey-100 first:border-t-0">
+      <button
+        type="button"
+        aria-haspopup="dialog"
+        aria-expanded={open}
+        onClick={() => setOpen(true)}
+        className="flex w-full min-w-0 items-start gap-2 px-3 py-2.5 text-left hover:bg-grey-50 focus-visible:outline-none focus-visible:shadow-[inset_0_0_0_2px_var(--color-purple-600)]"
+      >
+        <span className="flex min-w-0 flex-1 flex-col gap-1">
+          <span className="text-sm leading-[18px] font-bold text-black">
+            {title}
+          </span>
+          {itemLead && (
+            <span className="text-sm leading-[18px] text-grey-600">
+              {itemLead}
+            </span>
+          )}
+        </span>
+        <span className="mt-0.5 inline-flex shrink-0 text-grey-500" aria-hidden>
+          <IconLeaf
+            src={caretDown}
+            leafW={10}
+            leafH={5.83}
+            frame={16}
+            rotate={-90}
+            colorClass="text-grey-500"
+          />
+        </span>
+      </button>
+      <PermitDetailOverlay
+        open={open}
+        title={title}
+        titleId={titleId}
+        subtitle={itemLead ?? undefined}
+        onClose={() => setOpen(false)}
+      >
+        <FoldedWorkDetail
+          item={item}
+          role={role}
+          unit={unit}
+          flags={flags}
+          highlightedDocId={highlightedDocId}
+          onPreview={onPreview}
+        />
+      </PermitDetailOverlay>
+    </li>
+  );
+}
+
+function FoldedWorksList({
+  items,
+  role,
+  unit,
+  flags,
+  highlightedDocId,
+  onPreview,
+}: {
+  items: FoldedWork[];
+  role: Role;
+  unit: Unit;
+  flags: Record<PlannedWorkSlug, SlugFlag> | null;
+  highlightedDocId?: string | null;
+  onPreview: (id: string) => void;
+}) {
+  return (
+    <ul className="overflow-hidden rounded-[var(--radius-md)] border border-grey-100 bg-white">
+      {items.map((item) => (
+        <FoldedWorkRow
+          key={`${item.stageName}::${item.classified.step.name}`}
+          item={item}
+          role={role}
+          unit={unit}
+          flags={flags}
+          highlightedDocId={highlightedDocId}
+          onPreview={onPreview}
+        />
+      ))}
+    </ul>
+  );
+}
+
+function SlaChipList({ rows }: { rows: WorksSla[] }) {
+  if (rows.length === 0) return null;
+  return (
+    <ul className="flex flex-wrap gap-1.5">
+      {rows.map((row) => (
+        <li key={row.label}>
+          <WhenChip duration={row.label} kind={row.kind} />
+        </li>
+      ))}
+    </ul>
+  );
+}
+
+function WorksGuideStep({
+  n,
+  title,
+  lead,
+  last,
+  slas,
+  onOpen,
+  overlay,
+  children,
+}: {
+  n: number;
+  title: string;
+  lead: string;
+  last?: boolean;
+  slas?: WorksSla[];
+  onOpen?: () => void;
+  overlay?: ReactNode;
+  children?: ReactNode;
+}) {
+  const body = (
+    <>
+      <span className="flex min-w-0 items-start gap-2">
+        <span className="min-w-0 flex-1">
+          <span className="block text-sm leading-[18px] font-bold text-black">
+            {title}
+          </span>
+          <span className="mt-1 block text-sm leading-[18px] text-grey-600">
+            {lead}
+          </span>
+        </span>
+        {onOpen ? (
+          <span className="mt-0.5 inline-flex shrink-0 text-grey-500" aria-hidden>
+            <IconLeaf
+              src={caretDown}
+              leafW={10}
+              leafH={5.83}
+              frame={16}
+              rotate={-90}
+              colorClass="text-grey-500"
+            />
+          </span>
+        ) : null}
+      </span>
+      {slas && slas.length > 0 ? (
+        <span className="mt-2 block">
+          <SlaChipList rows={slas} />
+        </span>
+      ) : null}
+    </>
+  );
+  return (
+    <li className="flex gap-3">
+      <div className="flex w-6 shrink-0 flex-col items-center">
+        <span
+          aria-hidden
+          className="grid size-6 place-items-center rounded-full bg-purple-200 text-xs leading-4 font-bold text-purple-700"
+        >
+          {n}
+        </span>
+        {!last ? (
+          <span className="mt-1 w-px flex-1 bg-grey-100" aria-hidden />
+        ) : null}
+      </div>
+      <div className={cn("min-w-0 flex-1", !last && "pb-6")}>
+        {onOpen ? (
+          <button
+            type="button"
+            aria-haspopup="dialog"
+            onClick={onOpen}
+            className="w-full min-w-0 rounded-[var(--radius-md)] text-left hover:bg-grey-50 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]"
+          >
+            {body}
+          </button>
+        ) : (
+          <div>{body}</div>
+        )}
+        {children ? <div className="mt-3">{children}</div> : null}
+        {overlay}
+      </div>
+    </li>
+  );
+}
+
+function FoldedWorkStep({
+  n,
+  last,
+  item,
+  role,
+  unit,
+  flags,
+  highlightedDocId,
+  onPreview,
+}: {
+  n: number;
+  last?: boolean;
+  item: FoldedWork;
+  role: Role;
+  unit: Unit;
+  flags: Record<PlannedWorkSlug, SlugFlag> | null;
+  highlightedDocId?: string | null;
+  onPreview: (id: string) => void;
+}) {
+  const titleId = useId();
+  const [open, setOpen] = useState(false);
+  const title = cardTitle(role, item.stageName, item.classified.step.name);
+  const lead = worksApplyWhy(title, role);
+  const slas = slaForWorksItem(title, unit, role);
+  return (
+    <WorksGuideStep
+      n={n}
+      title={title}
+      lead={lead}
+      last={last}
+      slas={slas}
+      onOpen={() => setOpen(true)}
+      overlay={
+        <PermitDetailOverlay
+          open={open}
+          title={title}
+          titleId={titleId}
+          onClose={() => setOpen(false)}
+        >
+          <FoldedWorkDetail
+            item={item}
+            role={role}
+            unit={unit}
+            flags={flags}
+            highlightedDocId={highlightedDocId}
+            onPreview={onPreview}
+          />
+        </PermitDetailOverlay>
+      }
+    />
+  );
+}
+
+function WorksNeedGuide({
+  role,
+  unit,
+  flags,
+  permitNames,
+  permits,
+  alsoItems,
+  highlightedDocId,
+  onPreview,
+  flush = false,
+}: {
+  role: Role;
+  unit: Unit;
+  flags: Record<PlannedWorkSlug, SlugFlag> | null;
+  permitNames: string[];
+  permits: ReactNode;
+  alsoItems: FoldedWork[];
+  highlightedDocId?: string | null;
+  onPreview: (id: string) => void;
+  flush?: boolean;
+}) {
+  const titled = alsoItems.map((item) => ({
+    item,
+    title: cardTitle(role, item.stageName, item.classified.step.name),
+  }));
+  const before = titled
+    .filter(({ title }) => worksApplyOrderFor(title).band === "before")
+    .sort(
+      (a, b) =>
+        worksApplyOrderFor(a.title).rank - worksApplyOrderFor(b.title).rank,
+    );
+  const after = titled
+    .filter(({ title }) => worksApplyOrderFor(title).band === "after")
+    .sort(
+      (a, b) =>
+        worksApplyOrderFor(a.title).rank - worksApplyOrderFor(b.title).rank,
+    );
+  const governing = governingSlaForPermits(permitNames, unit, role);
+  const apply = worksApplyStepCopy(role, governing?.label);
+  const applyN = before.length + 1;
+  const lastN = applyN + after.length;
+  return (
+    <section
+      className={cn(
+        "flex flex-col gap-4",
+        !flush && "border-t border-grey-100 pt-4",
+      )}
+    >
+      <div className="flex flex-col gap-2">
+        <p className="text-sm leading-[18px] text-grey-600">
+          {worksApplyIntro(role)}
+        </p>
+      </div>
+      <ol
+        className="flex list-none flex-col"
+        aria-label="How to apply for this job"
+      >
+        {before.length > 0 ? (
+          <li className="pb-3">
+            <p className={LABEL_CAPS}>Before you apply</p>
+          </li>
+        ) : null}
+        {before.map(({ item }, index) => (
+          <FoldedWorkStep
+            key={`${item.stageName}::${item.classified.step.name}`}
+            n={index + 1}
+            last={false}
+            item={item}
+            role={role}
+            unit={unit}
+            flags={flags}
+            highlightedDocId={highlightedDocId}
+            onPreview={onPreview}
+          />
+        ))}
+        <WorksGuideStep
+          n={applyN}
+          title={apply.title}
+          lead={apply.lead}
+          last={after.length === 0}
+        >
+          {permits}
+        </WorksGuideStep>
+        {after.length > 0 ? (
+          <li className="pb-3">
+            <p className={LABEL_CAPS}>After you apply</p>
+            <p className="mt-1 text-sm leading-[18px] text-grey-600">
+              These are not a submit gate.
+            </p>
+          </li>
+        ) : null}
+        {after.map(({ item }, index) => (
+          <FoldedWorkStep
+            key={`${item.stageName}::${item.classified.step.name}`}
+            n={applyN + 1 + index}
+            last={applyN + 1 + index === lastN}
+            item={item}
+            role={role}
+            unit={unit}
+            flags={flags}
+            highlightedDocId={highlightedDocId}
+            onPreview={onPreview}
+          />
+        ))}
+      </ol>
+    </section>
   );
 }
 
@@ -3457,10 +4146,16 @@ function fileRowDomId(stageName: string, stepName: string, docId: string) {
   return `file-${stepDomId(stageName, stepName)}-${docId}`;
 }
 
+type FoldedWork = {
+  stageName: string;
+  classified: ClassifiedStep;
+};
+
 type JourneyItem = {
   stageName: string;
   classified: ClassifiedStep;
   packMembers?: ClassifiedStep[];
+  foldedWorks?: FoldedWork[];
 };
 
 /** After lock: unknown is not agreed — hide unless a listed slug is on. */
@@ -3478,6 +4173,68 @@ function filterStepsForPlannedWorks(
   });
 }
 
+const BIM_STEP_NAME = "BIM Model Submission";
+
+function foldsIntoAlsoNeeded(step: Step) {
+  if (isWorksDoorName(step.name)) return false;
+  if (!step.whenSlugs?.length) return false;
+  if (isPtwPackStep(step.name) && step.name !== BIM_STEP_NAME) return false;
+  return true;
+}
+
+function visibleFoldedWorks(
+  items: FoldedWork[],
+  flags: Record<PlannedWorkSlug, SlugFlag> | null,
+  locked: boolean,
+  hasAnswers: boolean,
+) {
+  if (!hasAnswers) return [];
+  return items.filter(({ classified }) => {
+    if (!foldsIntoAlsoNeeded(classified.step)) return false;
+    if (!flags) return true;
+    if (locked) {
+      return classified.step.whenSlugs!.some((slug) => flags[slug] === "on");
+    }
+    return classified.step.whenSlugs!.some((slug) => flags[slug] !== "off");
+  });
+}
+
+function collectFoldedWorksForJob(
+  phase: Phase,
+  role: Role,
+  unit: Unit,
+): FoldedWork[] {
+  const openingJob = phase.id === "setup" || phase.id === "build";
+  const phases = openingJob
+    ? PHASES.filter((row) => row.id === "setup" || row.id === "build")
+    : [phase];
+  const out: FoldedWork[] = [];
+  const seen = new Set<string>();
+  const take = (stageName: string, row: ClassifiedStep) => {
+    if (!foldsOffWorksRail(row.step)) return;
+    const key = `${stageName}::${row.step.name}`;
+    if (seen.has(key)) return;
+    seen.add(key);
+    out.push({ stageName, classified: row });
+  };
+  for (const rowPhase of phases) {
+    for (const stage of rowPhase.stages) {
+      const { steps } = classifyStage(stage, role, unit);
+      for (const row of steps) take(stage.name, row);
+    }
+  }
+  if (openingJob) {
+    const opening = PHASES.find((row) => row.id === "operate")?.stages.find(
+      (stage) => stage.name === "Opening",
+    );
+    if (opening) {
+      const { steps } = classifyStage(opening, role, unit);
+      for (const row of steps) take(opening.name, row);
+    }
+  }
+  return out;
+}
+
 function blocksForPhase(
   phase: Phase,
   role: Role,
@@ -3489,45 +4246,56 @@ function blocksForPhase(
   const blocks = phase.stages
     .map((stage) => {
       const { steps } = classifyStage(stage, role, unit);
+      return { stage, steps };
+    })
+    .filter((b) => b.steps.length > 0);
+  const injected = injectWorksDoor(
+    injectPlannedWorksQuiz(blocks, role, showQuiz),
+    phase,
+    role,
+    unit,
+  );
+  const foldedWorks: FoldedWork[] = [];
+  const rail = injected
+    .map((block) => {
+      const steps: ClassifiedStep[] = [];
+      for (const row of block.steps) {
+        if (foldsOffWorksRail(row.step)) {
+          foldedWorks.push({ stageName: block.stage.name, classified: row });
+          continue;
+        }
+        steps.push(row);
+      }
       return {
-        stage,
+        stage: block.stage,
         steps: filterStepsForPlannedWorks(steps, flags, locked),
       };
     })
     .filter((b) => b.steps.length > 0);
-  const injected = injectPlannedWorksQuiz(blocks, role, showQuiz);
-  if (phase.id !== "operate") return injected;
-  return injectMaintenanceWorks(injected, role, unit);
+  return { blocks: rail, foldedWorks };
 }
 
-function injectMaintenanceWorks(
+function injectWorksDoor(
   blocks: { stage: { name: string }; steps: ClassifiedStep[] }[],
+  phase: Phase,
   role: Role,
   unit: Unit,
 ) {
-  const classified = classifyStep(MAINTENANCE_WORKS_CATALOGUE, role, unit);
-  if (!classified) return blocks;
+  const door = classifyStep(worksDoorCatalogue(phase.id), role, unit);
+  if (!door) return blocks;
   if (
     blocks.some((block) =>
-      block.steps.some((row) => row.step.name === MAINTENANCE_WORKS_STEP),
+      block.steps.some((row) => isWorksDoorName(row.step.name)),
     )
   ) {
     return blocks;
   }
-  const opsIdx = blocks.findIndex(
-    (block) => block.stage.name === MAINTENANCE_WORKS_STAGE,
-  );
-  if (opsIdx >= 0) {
-    return blocks.map((block, index) =>
-      index === opsIdx
-        ? { ...block, steps: [classified, ...block.steps] }
-        : block,
-    );
+  if (blocks.length === 0) {
+    return [{ stage: { name: phase.stages[0]?.name ?? phase.name }, steps: [door] }];
   }
-  return [
-    { stage: { name: MAINTENANCE_WORKS_STAGE }, steps: [classified] },
-    ...blocks,
-  ];
+  return blocks.map((block, index) =>
+    index === 0 ? { ...block, steps: [door, ...block.steps] } : block,
+  );
 }
 
 export function ProcessV20Page() {
@@ -3549,9 +4317,9 @@ export function ProcessV20Page() {
   const [focusedStep, setFocusedStep] = useState<string | null>(null);
   const [previewDocId, setPreviewDocId] = useState<string | null>(null);
   const [jobId, setJobId] = useState(CONTRACTOR_JOBS[0].id);
-  const [quiz, setQuiz] = useState<QuizState>(EMPTY_QUIZ);
-  const [operateQuiz, setOperateQuiz] = useState<QuizState>(EMPTY_QUIZ);
-  const [quizScope, setQuizScope] = useState<QuizScope>("fitout");
+  const [quizzes, setQuizzes] =
+    useState<Record<PhaseQuizScope, QuizState>>(EMPTY_QUIZZES);
+  const [quizScope, setQuizScope] = useState<QuizScope>("setup");
   const [officerDraft, setOfficerDraft] = useState<QuizState | null>(null);
   const [contractorDraft, setContractorDraft] = useState<QuizState | null>(null);
   const [quizSheetOpen, setQuizSheetOpen] = useState(false);
@@ -3609,51 +4377,48 @@ export function ProcessV20Page() {
 
   useEffect(() => {
     if (!showQuiz) {
-      setQuiz(EMPTY_QUIZ);
-      setOperateQuiz(EMPTY_QUIZ);
+      setQuizzes(EMPTY_QUIZZES);
       setOfficerDraft(null);
       setContractorDraft(null);
       return;
     }
     const demoMidway = params.get("demo") === "quiz-midway";
     const demoFilled = params.get("demo") === "quiz-done";
-    const saved = demoFilled
-      ? filledDemoQuiz()
-      : demoMidway
-        ? midwayDemoQuiz()
-        : readQuizState(ctxUnit.id);
-    if (demoMidway || demoFilled) writeQuizState(ctxUnit.id, saved);
-    if (
-      role === "officer" &&
-      saved.status === "editing" &&
-      quizHasSavedAnswers(saved)
-    ) {
-      const closed: QuizState = {
-        ...saved,
-        status: "done",
-        answers: completeAnswers(saved.answers),
-      };
-      setQuiz(closed);
-      writeQuizState(ctxUnit.id, closed);
-    } else {
-      setQuiz(saved);
-    }
-    const operateSaved = readOperateQuizState(ctxUnit.id);
-    if (
-      role === "officer" &&
-      operateSaved.status === "editing" &&
-      quizHasSavedAnswers(operateSaved)
-    ) {
-      const closed: QuizState = {
-        ...operateSaved,
-        status: "done",
-        answers: completeAnswers(operateSaved.answers),
-      };
-      setOperateQuiz(closed);
-      writeOperateQuizState(ctxUnit.id, closed);
-    } else {
-      setOperateQuiz(operateSaved);
-    }
+    const demoMax = params.get("demo") === "quiz-max";
+    const demo = demoMax
+      ? maxFilledQuiz(ctxUnit)
+      : demoFilled
+        ? filledDemoQuiz()
+        : demoMidway
+          ? midwayDemoQuiz()
+          : null;
+    if (demo) writeScopedQuizState("setup", ctxUnit.id, demo);
+    const next = { ...EMPTY_QUIZZES };
+    (["setup", "build", "operate", "exit"] as PhaseQuizScope[]).forEach(
+      (scope) => {
+        const saved =
+          scope === "setup" && demo
+            ? demo
+            : readScopedQuizState(scope, ctxUnit.id);
+        if (
+          role === "officer" &&
+          saved.status === "editing" &&
+          quizHasSavedAnswers(saved)
+        ) {
+          const closed: QuizState = {
+            ...saved,
+            status: "done",
+            answers: completeAnswers(saved.answers),
+          };
+          next[scope] = closed;
+          writeScopedQuizState(scope, ctxUnit.id, closed);
+        } else {
+          next[scope] = saved;
+        }
+      },
+    );
+    next.build = next.setup;
+    setQuizzes(next);
     setOfficerDraft(null);
     setContractorDraft(null);
   }, [showQuiz, ctxUnit.id, role, params]);
@@ -3675,8 +4440,7 @@ export function ProcessV20Page() {
     window.localStorage.setItem(LS_JOB, id);
   };
 
-  const scopedQuiz = (scope: QuizScope) =>
-    scope === "operate" ? operateQuiz : quiz;
+  const scopedQuiz = (scope: QuizScope) => quizzes[phaseQuizScope(scope)];
 
   const persistFor = (scope: QuizScope, next: QuizState) => {
     const current = scopedQuiz(scope);
@@ -3689,13 +4453,13 @@ export function ProcessV20Page() {
       confirmed:
         role === "officer" && !empty ? Boolean(next.confirmed) : false,
     };
-    if (scope === "operate") {
-      setOperateQuiz(safe);
-      writeOperateQuizState(ctxUnit.id, safe);
-    } else {
-      setQuiz(safe);
-      writeQuizState(ctxUnit.id, safe);
-    }
+    const key = phaseQuizScope(scope);
+    setQuizzes((prev) => {
+      const next = { ...prev, [key]: safe };
+      if (key === "setup") next.build = safe;
+      return next;
+    });
+    writeScopedQuizState(key, ctxUnit.id, safe);
   };
 
   const openOfficerDraft = (scope: QuizScope = quizScope) => {
@@ -3711,22 +4475,6 @@ export function ProcessV20Page() {
   const quizQuestions = useMemo(
     () => (showQuiz ? questionsForUnit(ctxUnit) : []),
     [showQuiz, ctxUnit],
-  );
-  const quizSummary = useMemo(
-    () => (showQuiz ? answerSummaryLines(quiz, ctxUnit) : []),
-    [showQuiz, quiz, ctxUnit],
-  );
-  const plannedFlags = useMemo(
-    () => (showQuiz ? slugFlags(quiz, ctxUnit) : null),
-    [showQuiz, quiz, ctxUnit],
-  );
-  const operateSummary = useMemo(
-    () => (showQuiz ? answerSummaryLines(operateQuiz, ctxUnit) : []),
-    [showQuiz, operateQuiz, ctxUnit],
-  );
-  const operateFlags = useMemo(
-    () => (showQuiz ? slugFlags(operateQuiz, ctxUnit) : null),
-    [showQuiz, operateQuiz, ctxUnit],
   );
 
   const visiblePhases = useMemo(
@@ -3753,7 +4501,7 @@ export function ProcessV20Page() {
     window.localStorage.setItem(LS_KEY, active.id);
   }, [phaseFromUrl, active.id, setSearchParams]);
 
-  const stickyScope: QuizScope = active.id === "operate" ? "operate" : "fitout";
+  const stickyScope: QuizScope = active.id;
   const stickyQuiz = scopedQuiz(stickyScope);
   const worksProgress = quizProgress(stickyQuiz, ctxUnit);
   const showWorksSticky =
@@ -3761,8 +4509,7 @@ export function ProcessV20Page() {
     showQuiz &&
     browsingPhase &&
     !needsContext &&
-    !quizIsConfirmed(stickyQuiz) &&
-    (active.id === "setup" || active.id === "build" || active.id === "operate");
+    !quizIsConfirmed(stickyQuiz);
   const pinWorksSticky =
     showWorksSticky && worksProgress.answered < worksProgress.total;
 
@@ -3829,7 +4576,7 @@ export function ProcessV20Page() {
       showQuiz && isOfficer
         ? quizReviewRows(officerDraft ?? scopedQuiz(quizScope), ctxUnit)
         : [],
-    [showQuiz, isOfficer, officerDraft, quiz, operateQuiz, quizScope, ctxUnit],
+    [showQuiz, isOfficer, officerDraft, quizzes, quizScope, ctxUnit],
   );
   const officerOpenCount = unansweredReviewCount(officerReviewRows);
 
@@ -3868,11 +4615,19 @@ export function ProcessV20Page() {
     setQuizScope(scope);
     const current = scopedQuiz(scope);
     if (role === "tenant") {
-      if (scope === "operate") {
-        scrollToStep(MAINTENANCE_WORKS_STAGE, MAINTENANCE_WORKS_STEP);
-      } else {
-        scrollToStep(QUIZ_STAGE_NAME, QUIZ_STEP_NAME);
-      }
+      const phaseId = phaseQuizScope(scope);
+      const door = WORKS_DOOR_BY_PHASE[phaseId];
+      const phase =
+        visiblePhases.find((row) => row.id === phaseId) ??
+        PHASES.find((row) => row.id === phaseId);
+      const stageName =
+        phase?.stages.find((stage) => {
+          const { steps } = classifyStage(stage, role, ctxUnit);
+          return steps.length > 0;
+        })?.name ??
+        phase?.stages[0]?.name ??
+        door.name;
+      scrollToStep(stageName, door.name);
       return;
     }
     if (role === "contractor" && !quizCanWrite(role, current)) return;
@@ -3917,15 +4672,17 @@ export function ProcessV20Page() {
     if (isContractor && quizIsConfirmed(scopedQuiz(quizScope))) {
       setQuizSheetOpen(false);
     }
-  }, [isContractor, quiz, operateQuiz, quizScope]);
+  }, [isContractor, quizzes, quizScope]);
 
-  const phaseFlags = active.id === "operate" ? operateFlags : plannedFlags;
-  const quizLocked = quizIsConfirmed(
-    active.id === "operate" ? operateQuiz : quiz,
-  );
+  const phaseQuiz = scopedQuiz(active.id);
+  const phaseFlags = showQuiz ? slugFlags(phaseQuiz, ctxUnit) : null;
+  const quizLocked = quizIsConfirmed(phaseQuiz);
+  const phaseHasAnswers = quizHasSavedAnswers(phaseQuiz);
 
-  const stageBlocks = useMemo(() => {
-    if (needsContext) return [];
+  const stagePlan = useMemo(() => {
+    if (needsContext) {
+      return { blocks: [], foldedWorks: [] as FoldedWork[] };
+    }
     return blocksForPhase(
       active,
       role,
@@ -3936,6 +4693,18 @@ export function ProcessV20Page() {
     );
   }, [active, role, ctxUnit, needsContext, showQuiz, phaseFlags, quizLocked]);
 
+  const stageBlocks = stagePlan.blocks;
+  const jobFoldedWorks = useMemo(() => {
+    if (needsContext) return [] as FoldedWork[];
+    return collectFoldedWorksForJob(active, role, ctxUnit);
+  }, [active, role, ctxUnit, needsContext]);
+  const foldedWorks = visibleFoldedWorks(
+    jobFoldedWorks,
+    phaseFlags,
+    quizLocked,
+    phaseHasAnswers,
+  );
+
   const journeyItems = useMemo(() => {
     const list: JourneyItem[] = [];
     for (const b of stageBlocks) {
@@ -3944,22 +4713,16 @@ export function ProcessV20Page() {
           stageName: b.stage.name,
           classified: folded.classified,
           packMembers: folded.packMembers,
+          foldedWorks: isWorksDoorName(folded.classified.step.name)
+            ? foldedWorks
+            : undefined,
         });
       }
     }
     return list;
-  }, [stageBlocks]);
+  }, [stageBlocks, foldedWorks]);
 
   const visibleJourneyItems = journeyItems;
-
-  const permitResult = useMemo(
-    () => (showQuiz ? quizPermitResult(quiz, ctxUnit) : null),
-    [showQuiz, quiz, ctxUnit],
-  );
-  const operatePermitResult = useMemo(
-    () => (showQuiz ? quizPermitResult(operateQuiz, ctxUnit) : null),
-    [showQuiz, operateQuiz, ctxUnit],
-  );
 
   const navKeySig = journeyItems
     .map((s) => `${s.stageName}::${s.classified.step.name}`)
@@ -4153,16 +4916,16 @@ export function ProcessV20Page() {
     return {
       scope,
       kickoffSoon:
-        scope === "operate"
+        scope === "operate" || scope === "exit"
           ? false
           : isContractor
             ? Boolean(activeJob.kickoffSoon)
             : kickoffSoonForUnit(ctxUnit),
       state,
       questions: quizQuestions,
-      summary: scope === "operate" ? operateSummary : quizSummary,
-      flags: scope === "operate" ? operateFlags : plannedFlags,
-      permitResult: scope === "operate" ? operatePermitResult : permitResult,
+      summary: answerSummaryLines(state, ctxUnit),
+      flags: slugFlags(state, ctxUnit),
+      permitResult: quizPermitResult(state, ctxUnit),
       onStart: () => openQuizSheet(true, scope),
       onToggle: (questionId: QuestionId, optionId: string) => {
         if (officerDraft && quizScope === scope) {
@@ -4221,16 +4984,16 @@ export function ProcessV20Page() {
 
   const pathSteps = visibleJourneyItems.map((item) => {
     const key = stepFocusKey(item.stageName, item.classified.step.name);
-    const cardScope: QuizScope =
-      item.classified.step.name === MAINTENANCE_WORKS_STEP
-        ? "operate"
-        : "fitout";
+    const cardScope: QuizScope = isWorksDoorName(item.classified.step.name)
+      ? scopeForWorksDoor(item.classified.step.name)
+      : stickyScope;
     return (
       <PathStep
         key={key}
         classified={item.classified}
         stageName={item.stageName}
         packMembers={item.packMembers}
+        foldedWorks={item.foldedWorks}
         role={role}
         tenancyType={ctxUnit.tenancyType}
         terminal={ctxUnit.terminal}
@@ -5016,6 +5779,7 @@ function PathStep({
   classified,
   stageName,
   packMembers,
+  foldedWorks,
   jumpedTo,
   highlightStepName,
   highlightDocId,
@@ -5031,6 +5795,7 @@ function PathStep({
   classified: ClassifiedStep;
   stageName: string;
   packMembers?: ClassifiedStep[];
+  foldedWorks?: FoldedWork[];
   jumpedTo?: boolean;
   highlightStepName?: string | null;
   highlightDocId?: string | null;
@@ -5114,10 +5879,8 @@ function PathStep({
     );
     return [...own, ...extra.filter((d) => !seen.has(d.id) && seen.add(d.id))];
   }, [step.name, packMembers, tenancyType, terminal, zone, stageName]);
-  const hostsQuiz =
-    Boolean(quiz) &&
-    (step.name === QUIZ_STEP_NAME || step.name === MAINTENANCE_WORKS_STEP);
-  const hideScreener = quiz?.scope === "operate";
+  const hostsQuiz = Boolean(quiz) && isWorksDoorName(step.name);
+  const hideScreener = quiz?.scope === "operate" || quiz?.scope === "exit";
   const hostsKickoff =
     stageName === KICKOFF_STAGE_NAME && step.name === KICKOFF_STEP_NAME;
   const hostsPostKickoffPack =
@@ -5272,6 +6035,53 @@ function PathStep({
   const permitResult = quiz?.permitResult ?? null;
   const showPermitResults =
     Boolean(permitResult) && hostsQuiz && quizStatus !== "editing";
+  const foldedWorkItems = foldedWorks ?? [];
+  const alsoCount = foldedWorkItems.length;
+  const showAlsoNeeded = hostsQuiz && alsoCount > 0;
+  const showUnconfirmedPermits =
+    hostsQuiz &&
+    hasAnswers &&
+    !confirmed &&
+    Boolean(permitResult) &&
+    quizStatus !== "editing";
+  const tabWorksNeeds =
+    Boolean(permitResult) &&
+    showAlsoNeeded &&
+    (showUnconfirmedPermits || (confirmed && showPermitResults));
+  const permitListEl = permitResult ? (
+    <PermitList
+      result={permitResult}
+      unit={unit}
+      role={role}
+      stageName={stageName}
+      highlightedDocId={highlightDocId}
+      onPreview={onPreviewDoc}
+    />
+  ) : null;
+  const alsoNeededEl = (
+    <FoldedWorksList
+      items={foldedWorkItems}
+      role={role}
+      unit={unit}
+      flags={quiz?.flags ?? null}
+      highlightedDocId={highlightDocId}
+      onPreview={onPreviewDoc}
+    />
+  );
+  const worksNeedGuideEl = permitListEl ? (
+    <WorksNeedGuide
+      role={role}
+      unit={unit}
+      flags={quiz?.flags ?? null}
+      permitNames={
+        permitResult ? [permitResult.main, ...permitResult.extras] : []
+      }
+      permits={permitListEl}
+      alsoItems={showAlsoNeeded ? foldedWorkItems : []}
+      highlightedDocId={highlightDocId}
+      onPreview={onPreviewDoc}
+    />
+  ) : null;
   const showKickoffChecklist =
     Boolean(permitResult) &&
     stageName === KICKOFF_STAGE_NAME &&
@@ -5451,6 +6261,12 @@ function PathStep({
 
       {howRows.length > 0 && (
         <PartyLineList rows={howRows} size="how" />
+      )}
+
+      {showUnconfirmedPermits && worksNeedGuideEl}
+
+      {showAlsoNeeded && !tabWorksNeeds && (
+        <FieldSection label="Also needed">{alsoNeededEl}</FieldSection>
       )}
 
       {showContractorScreenerCta && <ScreenerPrepBanner />}
@@ -5644,14 +6460,23 @@ function PathStep({
                 <div className="flex w-full flex-col gap-4">
                   {confirmed && permitResult ? (
                     <>
-                      <PermitList
-                        result={permitResult}
-                        unit={unit}
-                        role={role}
-                        stageName={stageName}
-                        highlightedDocId={highlightDocId}
-                        onPreview={onPreviewDoc}
-                      />
+                      {permitListEl ? (
+                        <WorksNeedGuide
+                          role={role}
+                          unit={unit}
+                          flags={quiz?.flags ?? null}
+                          permitNames={
+                            permitResult
+                              ? [permitResult.main, ...permitResult.extras]
+                              : []
+                          }
+                          permits={permitListEl}
+                          alsoItems={showAlsoNeeded ? foldedWorkItems : []}
+                          highlightedDocId={highlightDocId}
+                          onPreview={onPreviewDoc}
+                          flush
+                        />
+                      ) : null}
                       {role !== "contractor" && !hideScreener ? (
                         <ScreenerCta role={role} />
                       ) : null}
@@ -5716,14 +6541,23 @@ function PathStep({
                 <div className="flex w-full flex-col gap-4">
                   {confirmed && permitResult ? (
                     <>
-                      <PermitList
-                        result={permitResult}
-                        unit={unit}
-                        role={role}
-                        stageName={stageName}
-                        highlightedDocId={highlightDocId}
-                        onPreview={onPreviewDoc}
-                      />
+                      {permitListEl ? (
+                        <WorksNeedGuide
+                          role={role}
+                          unit={unit}
+                          flags={quiz?.flags ?? null}
+                          permitNames={
+                            permitResult
+                              ? [permitResult.main, ...permitResult.extras]
+                              : []
+                          }
+                          permits={permitListEl}
+                          alsoItems={showAlsoNeeded ? foldedWorkItems : []}
+                          highlightedDocId={highlightDocId}
+                          onPreview={onPreviewDoc}
+                          flush
+                        />
+                      ) : null}
                       {role !== "contractor" && !hideScreener ? (
                         <ScreenerCta role={role} />
                       ) : null}
@@ -5785,6 +6619,7 @@ function PathStep({
             nudgeSticky &&
             nudgeProgress && (
             <WorksSticky
+              compact
               title={nudgeSticky.title}
               subtitle={nudgeSticky.subtitle}
               cta={nudgeSticky.cta}
