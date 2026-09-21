@@ -1,0 +1,36 @@
+var e=`﻿Document Name,Document Type,Document Owner Team,Check,Applicable Tenancy Phase,Previous Link Provided,Officer Only\r
+Renovation Requirements,Policy & Requirements,iFM,Open,Build,https://changiairport-my.sharepoint.com/:b:/p/chia_zheming/IQB8AwdW1eKNSKQaN0ahjmN0AbaIwIu8jenXRCBVtqp4vzw?email=mirabelle.peh%40changiairport.com&e=V0PJtt,No\r
+Airport Operational Safety Requirements,Guides,iFM,Open,,,No\r
+Reinstatement Requirements,Guides,iFM,Open,,,No\r
+OneCalendar 3.0 User Guide,Guides,iFM,Open,,,No\r
+Basement Access User Guides,Guides,iFM,Open,"Setup, Build, Operate, Exit",https://changiairport-my.sharepoint.com/:b:/p/lyvia_loh/IQD3iXETvSfZS62k49qeWWNhAcVjbp2OCXu0UWHL36GPuQM?e=eIuIqe,No\r
+T1 - T4 Basement Direction Guide,Guides,iFM,Open,"Setup, Build, Operate, Exit",https://changiairport-my.sharepoint.com/:b:/p/deon_jong/IQA88kQ2M0uGTpcQM6_qaI36AXTP19ghDCRHusucszcpDAY?e=ZdkuX8,No\r
+T4 Prohibited Items List,Guides,iFM,Open,,,No\r
+Electrical Application Forms (New Tenant),Forms & Templates,iFM,Open,Build,https://changiairport-my.sharepoint.com/:b:/p/chia_zheming/IQAZFlPhSZeBTLLR06dmQ7K7ARtLtvZAdJXVlkzcreKqTlU?email=mirabelle.peh%40changiairport.com&e=ZRVxrM,No\r
+Electrical Application Forms (Returning Tenant),Forms & Templates,iFM,Open,Build,https://changiairport-my.sharepoint.com/:b:/p/chia_zheming/IQB2x10lssNUSKGKAzVenIynASeXjwKaVBgKJ0cgnRrc3U0?email=mirabelle.peh%40changiairport.com&e=2oiR2j,No\r
+Pre-Opening Inspection Form,Forms & Templates,iFM,Open,,,No\r
+Risk Assessment Form,Forms & Templates,iFM,Open,Build,https://changiairport-my.sharepoint.com/:b:/p/chia_zheming/IQClirkwAZP8SI7UzyJuLZ6PAYJQtob7Q9EHtGqnxxkVQZY?email=mirabelle.peh%40changiairport.com&e=4k3sd6,No\r
+Method Statement Template,Forms & Templates,iFM,Open,,,No\r
+Hoarding Plan Template,Forms & Templates,iFM,Open,,,No\r
+Structured Cabling (STC) Work Request Form,Forms & Templates,iFM,Open,,,No\r
+Letter of Indemnity (LOI) Template,Forms & Templates,iFM,Open,"Build, Exit","https://changiairport.sharepoint.com/:b:/r/sites/OneCalendar/Shared%20Documents/One%20Calendar%20Document%20Repository/3.%20Materials%20relating%20to%20each%20Project%20Category/Terminal,%20Tenant,%20Blanket,%20Ceiling%20Project%20Category/Letter%20of%20Indemnity%20(2026).pdf?d=w5155dfe8324a4bd89d3d89008d9196a2&csf=1&web=1&e=XcOBAm",No\r
+Tenant Contractor Kit,Policy & Requirements,Comm,Open,"Setup, Build, Operate, Exit",https://changiairport-my.sharepoint.com/:b:/r/personal/eileen_tan_hb_changiairport_com/Documents/Working%20folder/Docs/Tenant-Contractor_Kit_Oct25.pdf?d=w53485fe5f3ec44888f3ef982c521b84c&csf=1&web=1&e=feJEIP,No\r
+Digital Handover Form,Forms & Templates,Comm,Open,Setup,https://changiairport-my.sharepoint.com/:b:/p/chia_zheming/IQD2oM-k8E7BRJR6m10I4I_6AaAzc_PE4kBFbLsXIoSmQVM?email=mirabelle.peh%40changiairport.com&e=MGlCw6,No\r
+Letter of Undertaking (LOU) Template,Forms & Templates,Comm,Open,"Build, Exit",,No\r
+Physical Handover Form,Forms & Templates,Comm,Open,"Setup, Build",https://changiairport-my.sharepoint.com/:b:/p/chia_zheming/IQB79G4hHBIpTYSELb3UKlNrAfvHmHBZqb5h5je-c6Bk65U?email=mirabelle.peh%40changiairport.com&e=5jtPLR,No\r
+Point of Sale (POS) Removal Request,Forms & Templates,Comm,Open,Exit,,No\r
+Template Email on Point of Sale (POS) Installation,Email Templates,Comm,Open,Setup,,Yes\r
+Template Email on Food & Beverage (F&B) Point of Sale (POS) Onboarding,Email Templates,Comm,Open,Setup,,Yes\r
+Template Email on Quality Service Management (QSM) Training,Email Templates,Comm,Open,Setup,,Yes\r
+Template Email on iShopChangi (iSC) Onboarding,Email Templates,Comm,Open,Setup,,Yes\r
+Template Email on Tenant Directory Taxonomy (TDT) Information Request,Email Templates,Comm,Open,Setup,,Yes\r
+Template Email on Store Opening,Email Templates,Comm,Open,Operate,https://changiairport-my.sharepoint.com/:u:/p/deon_jong/IQCx2uGNuGDLQKn_S2jz9y2QAd04A-P3VzUfML-df4wwR9E?e=XJYCXR,Yes\r
+Template Email on Outlet Opening Sales Reports (Managing Director),Email Templates,Comm,Open,Operate,,Yes\r
+"Template Email on Outlet Opening Sales Reports (Executive Vice President, Commercial)",Email Templates,Comm,Open,Operate,,Yes\r
+Template Email on Outlet Opening Sales Reports (Chief Executive Officer),Email Templates,Comm,Open,Operate,,Yes\r
+Fire Safety Requirements,Policy & Requirements,AES,Open,"Setup, Build, Exit",https://changiairport.sharepoint.com/:b:/r/sites/OneCalendar/Shared%20Documents/One%20Calendar%20Document%20Repository/Renovation%20Requirements%20Version%202.0%20Jun%202026.pdf?csf=1&web=1&e=uWpYAL,No\r
+CAG Fire Safety Manual,Guides,AES,Open,,,No\r
+Fire Alarm Isolation Permit,Forms & Templates,AES,Open,Build,https://www.changiairport.com/content/dam/changiairport/sg/corporate/evergreen/resources/forms-and-manuals/documents/isolation_permit_v13_10122021_nh.pdf,No\r
+Hot Works Permit Form,Forms & Templates,AES,Open,Build,https://www.changiairport.com/content/dam/changiairport/sg/corporate/evergreen/resources/forms-and-manuals/documents/hot_work_permit_v22_2023.pdf,No\r
+Joint Site Inspection (JSI) Form,Forms & Templates,AES,Open,"Setup, Build","https://changiairport.sharepoint.com/:b:/r/sites/OneCalendar/Shared%20Documents/One%20Calendar%20Document%20Repository/3.%20Materials%20relating%20to%20each%20Project%20Category/Terminal,%20Tenant,%20Blanket,%20Ceiling%20Project%20Category/AES%20Isolation%20-%20Joint%20Site%20Inspection%20Form%20JSI_Form_V6_2023.pdf?csf=1&web=1&e=4TebV4",No\r
+`,t=[`Policy & Requirements`,`Guides`,`Forms & Templates`,`Email Templates`],n=[`Setup`,`Build`,`Operate`,`Exit`],r={"doc-renovation":`Renovation Requirements`,"doc-method":`Method Statement Template`,"doc-hoarding":`Hoarding Plan Template`,"doc-jsi":`Joint Site Inspection (JSI) Form`,"doc-fire":`Fire Safety Requirements`,"doc-handover":`Physical Handover Form`,"doc-poi":`Pre-Opening Inspection Form`},i={"Policy & Requirements":`Policy & Requirements`,"Template & Form":`Forms & Templates`,"Process Guide":`Guides`,"Design Guideline":`Guides`,"Reference Document":`Guides`};function a(e){return e.toLowerCase().replace(/[^a-z0-9]+/g,`-`).replace(/^-|-$/g,``)}function o(e){let t=[],n=``,r=!1;for(let i=0;i<e.length;i+=1){let a=e[i];a===`"`?r&&e[i+1]===`"`?(n+=`"`,i+=1):r=!r:a===`,`&&!r?(t.push(n.trim()),n=``):n+=a}return t.push(n.trim()),t}function s(e){return e.split(`,`).map(e=>e.trim()).filter(e=>n.includes(e))}function c(e){return e.replace(/^\uFEFF/,``).split(/\r?\n/).filter(e=>e.trim()).slice(1).flatMap(e=>{let n=o(e),r=n[0],i=n[1];if(!r||!t.includes(i))return[];let c=n[5];return[{id:a(r),name:r,type:i,owner:n[2]===`iFM`?`IFM`:n[2],phases:s(n[4]??``),url:c||void 0,officerOnly:/^yes$/i.test(n[6]??``)}]})}var l=c(e);function u(e){if(e)return l.find(t=>t.id===e)}function d(e){let t=r[e.id];return l.find(n=>n.id===e.id||n.name===e.name||n.name===t||n.id===a(e.name)||t&&n.id===a(t))}function f(e){return d(e)?.type??i[e.type]??`Guides`}function p(e,t){return!d(e)?.officerOnly||t===`officer`}function m(e,t){if(!p(e,t))return null;let n=d(e),r=n?.url||e.externalUrl||`/documents/${n?.id??e.id}`,i=r.includes(`example.com`),a=i?`/documents/${n?.id??e.id}`:r;return{id:n?.id??e.id,name:n?.name??e.name,type:n?.type??f(e),href:a,external:/^https?:\/\//.test(a)&&!i}}function h(e){return l.filter(t=>!t.officerOnly||e===`officer`)}export{m as i,u as n,h as r,t};
