@@ -7,6 +7,7 @@ export function TextField({
   error,
   hint,
   trailing,
+  optional,
   hideLabel,
   className,
   ...rest
@@ -16,6 +17,7 @@ export function TextField({
   error?: string;
   hint?: string;
   trailing?: ReactNode;
+  optional?: ReactNode;
   hideLabel?: boolean;
 } & Omit<InputHTMLAttributes<HTMLInputElement>, "id" | "className">) {
   const describedBy = error
@@ -24,18 +26,29 @@ export function TextField({
       ? `${id}-hint`
       : undefined;
 
+  const labelEl = (
+    <label
+      htmlFor={id}
+      className={
+        hideLabel
+          ? "sr-only"
+          : "text-sm leading-[18px] font-bold text-black"
+      }
+    >
+      {label}
+    </label>
+  );
+
   return (
     <div className="flex flex-col gap-2">
-      <label
-        htmlFor={id}
-        className={
-          hideLabel
-            ? "sr-only"
-            : "text-sm leading-[18px] font-bold text-black"
-        }
-      >
-        {label}
-      </label>
+      {optional && !hideLabel ? (
+        <div className="flex items-baseline justify-between gap-3">
+          {labelEl}
+          {optional}
+        </div>
+      ) : (
+        labelEl
+      )}
       <div className="relative">
         <input
           id={id}

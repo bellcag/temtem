@@ -496,19 +496,22 @@ export function WorksLockedOutcome({
   steps,
   role,
   unit,
+  locked = true,
 }: {
   permits: string[];
   steps: WorksOutcomeStep[];
   role: Role;
   unit: Unit;
+  locked?: boolean;
 }) {
   const hasPack = permits.length > 0;
   const count = (hasPack ? 1 : 0) + steps.length;
   if (count === 0) return null;
+  const source = locked ? "the locked list" : "this list";
   const countLine =
     count === 1
-      ? "1 step follows from the locked list"
-      : `${count} steps follow from the locked list`;
+      ? `1 step follows from ${source}`
+      : `${count} steps follow from ${source}`;
 
   return (
     <section className="flex flex-col gap-3">

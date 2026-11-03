@@ -30,6 +30,85 @@ export function FilterChip({
   );
 }
 
+/** ➗ Components Attribute Chip · Property=Functional Features · Size=sm */
+export function AttributeChip({ children }: { children: ReactNode }) {
+  return (
+    <span
+      className="inline-flex h-6 w-fit max-w-full items-center rounded-[var(--radius-sm)] bg-grey-50 px-2 text-xs leading-4 font-bold text-grey-700"
+      title={typeof children === "string" ? children : undefined}
+    >
+      <span className="min-w-0 truncate">{children}</span>
+    </span>
+  );
+}
+
+/** Size=sm pill. Brand tone matches ➗ Filter Chip Status=Applied / active. */
+export function StatusChip({
+  children,
+  tone = "grey",
+}: {
+  children: ReactNode;
+  tone?: "grey" | "brand";
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-[22px] w-fit max-w-full items-center rounded-full px-2 text-[11px] leading-[14px] font-bold",
+        tone === "brand"
+          ? "border border-transparent bg-purple-200 text-purple-700"
+          : "border border-grey-200 bg-white text-grey-700",
+      )}
+    >
+      {children}
+    </span>
+  );
+}
+
+/** Status word + optional count. Dot marks the state; number is not mashed into the label. */
+export function StatusTag({
+  label,
+  count,
+  tone = "brand",
+}: {
+  label: string;
+  count?: number;
+  tone?: "grey" | "brand" | "success";
+}) {
+  return (
+    <span
+      className={cn(
+        "inline-flex h-6 w-fit max-w-full items-center gap-1.5 rounded-full px-2 text-xs leading-4 font-bold",
+        tone === "brand" && "bg-purple-100 text-purple-700",
+        tone === "success" && "bg-success-100 text-success-800",
+        tone === "grey" && "border border-grey-200 bg-white text-grey-700",
+      )}
+    >
+      <span
+        aria-hidden
+        className={cn(
+          "size-1.5 shrink-0 rounded-full",
+          tone === "brand" && "bg-purple-600",
+          tone === "success" && "bg-success-600",
+          tone === "grey" && "bg-grey-400",
+        )}
+      />
+      <span className="min-w-0 truncate">{label}</span>
+      {count != null ? (
+        <span
+          className={cn(
+            "tabular-nums",
+            tone === "brand" && "text-purple-600",
+            tone === "success" && "text-success-600",
+            tone === "grey" && "text-grey-500",
+          )}
+        >
+          {count}
+        </span>
+      ) : null}
+    </span>
+  );
+}
+
 export function OutlineChip({
   children,
   tone = "neutral",

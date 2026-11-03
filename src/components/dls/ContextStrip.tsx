@@ -2,15 +2,20 @@ import type { ReactNode } from "react";
 
 export function ContextStrip({
   kicker,
+  aside,
   children,
 }: {
   kicker: string;
+  aside?: ReactNode;
   children: ReactNode;
 }) {
   return (
     <div className="rounded-[var(--radius-2xl)] border border-grey-100 bg-white px-5 py-4">
-      <div className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
-        {kicker}
+      <div className="flex items-center justify-between gap-3">
+        <div className="text-[10px] font-bold uppercase tracking-wider text-grey-500">
+          {kicker}
+        </div>
+        {aside}
       </div>
       <div className="mt-1.5 text-sm text-grey-700">{children}</div>
     </div>

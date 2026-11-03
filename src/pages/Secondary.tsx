@@ -1,4 +1,9 @@
-import { Link, useParams } from "react-router-dom";
+import { Link, useLocation, useParams } from "react-router-dom";
+import {
+  BmcContactActions,
+  bmcContactsFor,
+  bmcServiceLabel,
+} from "@/components/v31/ContactChip";
 import { FileText, ArrowLeft } from "lucide-react";
 import { DOCUMENTS } from "@/lib/tenancy-data";
 import { useApp } from "@/lib/app-state";
@@ -179,7 +184,11 @@ export function AppsPage() {
 }
 
 export function ContactsPage() {
-  const { role } = useApp();
+  const { role, effectiveUnit: unit } = useApp();
+  const { hash } = useLocation();
+  useEffect(() => {
+    if (hash) document.getElementById(hash.slice(1))?.scrollIntoView();
+  }, [hash]);
   const people =
     role === "officer"
       ? [
@@ -211,6 +220,36 @@ export function ContactsPage() {
           </li>
         ))}
       </ul>
+
+      <section id="bmc" className="mt-10 scroll-mt-24">
+        <h2>Building Maintenance Contractor</h2>
+        <p className="mt-1 text-grey-500">
+          {unit
+            ? `Each BMC team has its own contact. These cover ${unit.unitNo} in ${unit.terminal}.`
+            : "Each BMC team has its own contact for each terminal."}
+        </p>
+        <ul className="mt-4 divide-y divide-grey-75 overflow-hidden rounded-[var(--radius-2xl)] border border-grey-100 bg-white">
+          {bmcContactsFor(unit)
+            .filter((p) => p.service !== "kwp" || !unit || unit.tenancyType === "F&B")
+            .map((p) => (
+              <li key={p.service} className="flex items-center justify-between gap-3 px-4 py-4 tablet:px-5">
+                <div className="min-w-0">
+                  <div className="text-xs font-bold text-grey-500">
+                    {bmcServiceLabel(p.service)}
+                  </div>
+                  <div className="font-bold text-black">{p.name}</div>
+                  <div className="text-sm text-grey-500">
+                    {p.role} · {p.terminals.join(" & ")}
+                  </div>
+                  <div className="mt-1 truncate text-sm text-grey-500">
+                    {p.phone ? `${p.phone} · ${p.email}` : p.email}
+                  </div>
+                </div>
+                <BmcContactActions person={p} />
+              </li>
+            ))}
+        </ul>
+      </section>
     </div>
   );
 }

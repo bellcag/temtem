@@ -108,7 +108,7 @@ export type SubStep = {
   workIf?: string;
 };
 
-/** Planned-works slugs from the real catalogue. Stored only — not used to hide/show yet. */
+/** Quiz slugs from the journey catalogue. Hide a card only when every listed slug is off. */
 export type PlannedWorkSlug =
   | "large-scale-renovation"
   | "change-of-use"
@@ -127,7 +127,20 @@ export type PlannedWorkSlug =
   | "telco-cabling"
   | "catwalk-access"
   | "skytrain-work"
-  | "authority-approval";
+  | "authority-approval"
+  | "facing-travelling-pax"
+  | "closed-door-rooms"
+  | "duplex"
+  | "apron"
+  | "transit-area"
+  | "landside-public"
+  | "landside-concessions"
+  | "lack-of-perm-meter"
+  | "tenant-maintained-ahu"
+  | "deep-frying-open-flame"
+  | "gas-supply"
+  | "servers-computer-rooms"
+  | "ceiling-panel-false-ceiling";
 
 export type Step = {
   name: string;
@@ -239,6 +252,7 @@ export const PHASES: Phase[] = [
           {
             name: "Set Up Systems Required for Staff",
             hideFrom: ["contractor"],
+            whenSlugs: ["facing-travelling-pax"],
             responsible: "You",
             what: "Register front-of-house staff for Quality Service Management where the outlet faces travelling passengers.",
             whatFor: { tenant: "Register your front-of-house staff for Quality Service Management where the outlet faces travelling passengers.", officer: "Register front-of-house staff for Quality Service Management where the outlet faces travelling passengers." },
@@ -259,6 +273,7 @@ export const PHASES: Phase[] = [
           {
             name: "Set Up WebEpic Account",
             hideFrom: ["contractor"],
+            whenSlugs: ["landside-concessions"],
             responsible: "CAG + You",
             what: "Get WebEpic live for your outlet for tenancy ops.",
             whatFor: {
@@ -887,6 +902,7 @@ export const PHASES: Phase[] = [
           },
           {
             name: "T4 Transit Area Security Requirements",
+            whenSlugs: ["transit-area"],
             responsible: "You",
             what: "T4 Transit Area Security Requirements",
             whatFor: {
@@ -1160,6 +1176,7 @@ export const PHASES: Phase[] = [
           },
           {
             name: "Temporary Power Request",
+            whenSlugs: ["lack-of-perm-meter"],
             responsible: "CAG + You",
             what: "Request temporary power from IFM if the unit has no permanent meter.",
             whatFor: {
@@ -1279,6 +1296,7 @@ export const PHASES: Phase[] = [
           },
           {
             name: "Ceiling Inspection Sign-Off",
+            whenSlugs: ["ceiling-panel-false-ceiling"],
             responsible: "CAG + You",
             what: "IFM and AES verify the ceiling inspection.",
             subSteps: [
@@ -1289,6 +1307,7 @@ export const PHASES: Phase[] = [
           },
           {
             name: "Public Announcement System Testing",
+            whenSlugs: ["closed-door-rooms"],
             responsible: "CAG + You",
             what: "IFM witnesses Public Announcement System testing.",
             subSteps: [
@@ -1307,6 +1326,7 @@ export const PHASES: Phase[] = [
           },
           {
             name: "Kitchen Fire Suppression System Test",
+            whenSlugs: ["deep-frying-open-flame"],
             responsible: "CAG + You",
             what: "AES verifies kitchen fire suppression system testing for F&B.",
             subSteps: [
@@ -1316,6 +1336,7 @@ export const PHASES: Phase[] = [
           },
           {
             name: "Gas Leak Test",
+            whenSlugs: ["gas-supply"],
             responsible: "CAG + You",
             what: "AES verifies gas leak testing for F&B.",
             subSteps: [
@@ -1325,6 +1346,7 @@ export const PHASES: Phase[] = [
           },
           {
             name: "Total Gas Flooding System Test",
+            whenSlugs: ["servers-computer-rooms"],
             responsible: "CAG + You",
             what: "AES verifies Total Gas Fire Suppression System testing.",
             subSteps: [
@@ -1591,6 +1613,7 @@ export const PHASES: Phase[] = [
           {
             name: "Air Handling Unit Servicing Reporting",
             hideFrom: ["contractor"],
+            whenSlugs: ["tenant-maintained-ahu"],
             responsible: "You",
             what: "Submit your Air Handling Unit servicing report to IFM via TOPAZ.",
             whatFor: {
@@ -2215,15 +2238,54 @@ export type TeamEntry = {
   terminal: "T1" | "T2" | "T3" | "T4" | "Jewel" | "All";
   fn: string;
   email: string;
+  phone?: string;
   notes?: string;
 };
+
+export type BmcService = "jsi" | "fire-alarm" | "pa" | "kwp" | "building";
+
+export const BMC_SERVICES: { id: BmcService; label: string; covers: string }[] = [
+  { id: "jsi", label: "Joint Site Inspection", covers: "Books and walks the JSI, endorses the JSI form." },
+  { id: "fire-alarm", label: "Fire Alarm System", covers: "Fire alarm zones, isolation and reinstatement." },
+  { id: "pa", label: "PA System", covers: "Public announcement speakers and the PA test." },
+  { id: "kwp", label: "KWP Flushing", covers: "Kitchen waste pipe flushing for F&B units." },
+  { id: "building", label: "Building Team", covers: "Anything else on the building and its systems." },
+];
+
+export type BmcContact = {
+  service: BmcService;
+  /** Terminals this person covers. */
+  terminals: Unit["terminal"][];
+  name: string;
+  role: string;
+  email: string;
+  phone?: string;
+};
+
+export const BMC_CONTACTS: BmcContact[] = [
+  { service: "jsi", terminals: ["T1", "T2"], name: "Wendy Tan", role: "BMC Engineer", email: "wendy.tan@changiairport.com" },
+  { service: "jsi", terminals: ["T3"], name: "Rohit Menon", role: "BMC Engineer", email: "rohit.menon@changiairport.com" },
+  { service: "jsi", terminals: ["T4", "Jewel"], name: "Farid Hassan", role: "BMC Engineer", email: "farid.hassan@changiairport.com" },
+  { service: "fire-alarm", terminals: ["T1", "T2"], name: "Kelvin Ong", role: "Fire Alarm Technician", email: "kelvin.ong@changiairport.com" },
+  { service: "fire-alarm", terminals: ["T3"], name: "Siti Aminah", role: "Fire Alarm Technician", email: "siti.aminah@changiairport.com" },
+  { service: "fire-alarm", terminals: ["T4", "Jewel"], name: "Jason Lee", role: "Fire Alarm Technician", email: "jason.lee@changiairport.com" },
+  { service: "pa", terminals: ["T1", "T2"], name: "Melissa Goh", role: "PA Systems Engineer", email: "melissa.goh@changiairport.com" },
+  { service: "pa", terminals: ["T3"], name: "Arun Pillai", role: "PA Systems Engineer", email: "arun.pillai@changiairport.com" },
+  { service: "pa", terminals: ["T4", "Jewel"], name: "Grace Lim", role: "PA Systems Engineer", email: "grace.lim@changiairport.com" },
+  { service: "kwp", terminals: ["T1", "T2"], name: "Benjamin Teo", role: "Plumbing Supervisor", email: "benjamin.teo@changiairport.com" },
+  { service: "kwp", terminals: ["T3"], name: "Nur Hidayah", role: "Plumbing Supervisor", email: "nur.hidayah@changiairport.com" },
+  { service: "kwp", terminals: ["T4", "Jewel"], name: "Vincent Chua", role: "Plumbing Supervisor", email: "vincent.chua@changiairport.com" },
+  { service: "building", terminals: ["T1", "T2"], name: "T1 & T2 Building Team", role: "BMC duty desk", email: "bmc-t12@changiairport.com" },
+  { service: "building", terminals: ["T3"], name: "T3 Building Team", role: "BMC duty desk", email: "bmc-t3@changiairport.com" },
+  { service: "building", terminals: ["T4", "Jewel"], name: "T4 & Jewel Building Team", role: "BMC duty desk", email: "bmc-t4@changiairport.com" },
+];
 
 export const TEAM_DIRECTORY: TeamEntry[] = [
   { name: "Jasmine Goh", role: "IFM Officer", team: "IFM", terminal: "T3", fn: "Renovation Works", email: "jasmine.goh@changiairport.com", notes: "JSI appointments coordinator" },
   { name: "Daniel Koh", role: "IFM Officer", team: "IFM", terminal: "T2", fn: "JSI Appointments", email: "daniel.koh@changiairport.com" },
   { name: "Hannah Lim", role: "IFM Officer", team: "IFM", terminal: "T1", fn: "Renovation Works", email: "hannah.lim@changiairport.com", notes: "Available Mon–Thu only" },
-  { name: "Rohit Menon", role: "BMC Engineer", team: "BMC", terminal: "T3", fn: "Building Controls", email: "rohit.menon@changiairport.com", notes: "TOPAZ POC" },
-  { name: "Wendy Tan", role: "BMC Engineer", team: "BMC", terminal: "T1 & T2" as "T1", fn: "M&E Coordination", email: "wendy.tan@changiairport.com" },
+  { name: "Rohit Menon", role: "BMC Engineer", team: "BMC", terminal: "T3", fn: "Building Controls", email: "rohit.menon@changiairport.com", phone: "+65 6595 6704", notes: "TOPAZ POC" },
+  { name: "Wendy Tan", role: "BMC Engineer", team: "BMC", terminal: "T1 & T2" as "T1", fn: "M&E Coordination", email: "wendy.tan@changiairport.com", phone: "+65 6595 6764" },
   { name: "Faizal Ismail", role: "AES Officer", team: "AES", terminal: "T3", fn: "Fire Safety Permits", email: "faizal.ismail@changiairport.com" },
   { name: "Priscilla Ong", role: "AES Officer", team: "AES", terminal: "T2", fn: "Hot Works Approvals", email: "priscilla.ong@changiairport.com" },
   { name: "Anuar Rahim", role: "AES Officer", team: "AES", terminal: "T4", fn: "Fire Safety Permits", email: "anuar.rahim@changiairport.com" },

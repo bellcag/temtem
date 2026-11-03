@@ -91,6 +91,8 @@ export const CARD_WHYS: Record<Role, Record<string, string>> = {
       "TOPAZ is where recurring service reports go for the rest of the tenancy.",
     "Operations::Regular Servicing Reporting":
       "Lodge the reports IFM named for this fit-out in TOPAZ. Confirm the exact list when the account is created.",
+    "Operations::Maintenance works":
+      "Use the Planned Works Quiz when the unit needs repair or refresh works after opening.",
     "Operations::Upcoming works":
       "Read works the Project Officer started for this unit. The agreed list lives in Works.",
     "Operations::Later renovation works":
@@ -199,6 +201,8 @@ export const CARD_WHYS: Record<Role, Record<string, string>> = {
       "Attend with IFM and AES. Arrange this at least 3 days before opening. A fail keeps the unit closed.",
     "Opening::Store Opening & Capex Verification":
       "Fix remaining defects from IFM before opening.",
+    "Operations::Maintenance works":
+      "Use the Planned Works Quiz when the unit needs repair or refresh works after opening.",
     "Operations::Upcoming works":
       "Read works the Project Officer started for this unit. The agreed list lives in Works.",
     "Operations::Later renovation works":
@@ -311,6 +315,8 @@ export const CARD_WHYS: Record<Role, Record<string, string>> = {
       "Create the tenant TOPAZ account and the report list they owe. TOPAZ is where servicing reports go for the rest of the tenancy.",
     "Operations::Regular Servicing Reporting":
       "Check IFM approved the reports named for this fit-out in TOPAZ.",
+    "Operations::Maintenance works":
+      "Use the Planned Works Quiz when the unit needs repair or refresh works after opening.",
     "Operations::Upcoming works":
       "Start a job when the unit needs a refresh or fix. The agreed list lives in Works.",
     "Operations::Later renovation works":

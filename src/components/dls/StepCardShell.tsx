@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { forwardRef, type ReactNode } from "react";
 import { cn } from "@/lib/utils";
 
 export function StepCardShell({
@@ -15,8 +15,8 @@ export function StepCardShell({
       id={id}
       className={cn(
         embedded
-          ? "flex flex-col gap-3 bg-transparent"
-          : "flex flex-col gap-4 tablet:gap-6 rounded-[var(--radius-2xl)] bg-white p-4 shadow-[var(--shadow-light-bg)] tablet:p-6",
+          ? "flex min-w-0 flex-col gap-3 bg-transparent"
+          : "flex min-w-0 flex-col gap-4 tablet:gap-6 rounded-[var(--radius-2xl)] bg-white p-4 shadow-[var(--shadow-light-bg)] tablet:p-6",
         "scroll-mt-[8rem] tablet:scroll-mt-[6rem] desktop:scroll-mt-8",
       )}
     >
@@ -25,11 +25,19 @@ export function StepCardShell({
   );
 }
 
-export function StepCardTitle({ children }: { children: ReactNode }) {
+export const StepCardTitle = forwardRef<
+  HTMLHeadingElement,
+  { children: ReactNode; className?: string }
+>(function StepCardTitle({ children, className }, ref) {
   return (
-    <h3 className="text-lg leading-[22px] font-bold text-black">{children}</h3>
+    <h3
+      ref={ref}
+      className={cn("text-base leading-5 font-bold text-black", className)}
+    >
+      {children}
+    </h3>
   );
-}
+});
 
 export function YourStepsList({ children }: { children: ReactNode }) {
   return <ol className="flex flex-col gap-2">{children}</ol>;

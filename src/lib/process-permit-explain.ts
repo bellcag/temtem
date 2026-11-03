@@ -181,6 +181,7 @@ const ALIAS: Record<string, string> = {
   "Skytrain Permit-To-Work": "skytrain",
   "Skytrain permit": "skytrain",
   "Airside Work Permit": "airside",
+  "Airside Work Permit (Airfield / Baggage)": "airside",
   "Airside work permit": "airside",
   "T4 Transit Area Security Requirements": "t4-transit",
   "T4 transit security": "t4-transit",

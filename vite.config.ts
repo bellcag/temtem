@@ -7,7 +7,7 @@ import { fileURLToPath } from "node:url";
 const rootDir = path.dirname(fileURLToPath(import.meta.url));
 
 export default defineConfig({
-  base: process.env.GITHUB_PAGES === "1" ? "/temtem/" : "/",
+  base: process.env.VITE_BASE || (process.env.GITHUB_PAGES === "1" ? "/temtem/" : "/"),
   plugins: [react(), tailwindcss()],
   resolve: {
     alias: {

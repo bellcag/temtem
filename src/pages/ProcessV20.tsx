@@ -75,14 +75,11 @@ import {
   EMPTY_QUIZ,
   filterClassifiedByPlannedWorks,
   injectPlannedWorksQuiz,
-  isOptionOn,
   filledDemoQuiz,
   midwayDemoQuiz,
   questionHasAnswer,
   KICKOFF_STAGE_NAME,
   KICKOFF_STEP_NAME,
-  NONE_ID,
-  NOT_SURE_ID,
   questionsForUnit,
   quizCanWrite,
   quizCopy,
@@ -115,11 +112,11 @@ import {
   type SlugFlag,
 } from "@/lib/process-planned-works-quiz";
 import { Button } from "@/components/Button/Button";
+import { QuizChecklistForm } from "@/components/dls/QuizChecklist";
 import { DocumentPreviewDrawer } from "@/components/DocumentPreviewDrawer";
 import { cn } from "@/lib/utils";
 import caretDown from "@/assets/figma/caret-down.svg";
 import caretUp from "@/assets/figma/caret-up.svg";
-import checkboxCheck from "@/assets/figma/checkbox-check.svg";
 import checkIcon from "@/assets/figma/check.svg";
 import closeIcon from "@/assets/figma/close.svg";
 import xCloseIcon from "@/assets/figma/x-close.svg";
@@ -1709,18 +1706,22 @@ function PlannedWorksSheet({
   open,
   questions,
   state,
+  unit,
   onToggle,
   onSave,
   onClose,
   allowUnsure = true,
+  locked = false,
 }: {
   open: boolean;
   questions: QuizQuestion[];
   state: QuizState;
+  unit: Unit;
   onToggle: (questionId: QuestionId, optionId: string) => void;
   onSave: () => void;
   onClose: () => void;
   allowUnsure?: boolean;
+  locked?: boolean;
 }) {
   const mobile = useMobileViewport();
   const [page, setPage] = useState(0);
@@ -1791,7 +1792,7 @@ function PlannedWorksSheet({
               Planned Works Quiz
             </h2>
             <p className="text-sm leading-[18px] text-grey-700">
-              {quizCopy.bannerContractor}
+              {locked ? quizCopy.sheetLockedSub : quizCopy.bannerContractor}
             </p>
           </div>
           <OverlayIconBtn label="Close" onClick={onClose}>
@@ -1802,12 +1803,16 @@ function PlannedWorksSheet({
           <PlannedWorksForm
             questions={questions.slice(page, page + 1)}
             state={state}
+            unit={unit}
             onToggle={onToggle}
             allowUnsure={allowUnsure}
+            locked={locked}
           />
-          <p className="text-sm leading-[18px] text-grey-700 italic">
-            {quizCopy.pauseHint}
-          </p>
+          {!locked && (
+            <p className="text-sm leading-[18px] text-grey-700 italic">
+              {quizCopy.pauseHint}
+            </p>
+          )}
         </div>
         <footer
           className={cn(
@@ -1853,12 +1858,20 @@ function PlannedWorksSheet({
               mobile ? "flex-col" : "h-9 flex-row items-center",
             )}
           >
-            <SheetActionBtn tone="secondary" onClick={onClose}>
-              {quizCopy.officerCancelCta}
-            </SheetActionBtn>
-            <SheetActionBtn onClick={onSave}>
-              {quizCopy.sheetSaveCta}
-            </SheetActionBtn>
+            {locked ? (
+              <SheetActionBtn onClick={onClose}>
+                {quizCopy.sheetDoneCta}
+              </SheetActionBtn>
+            ) : (
+              <>
+                <SheetActionBtn tone="secondary" onClick={onClose}>
+                  {quizCopy.officerCancelCta}
+                </SheetActionBtn>
+                <SheetActionBtn onClick={onSave}>
+                  {quizCopy.sheetSaveCta}
+                </SheetActionBtn>
+              </>
+            )}
           </div>
         </footer>
       </aside>
@@ -3069,58 +3082,6 @@ function OfficerConfirmBanner({
   );
 }
 
-function CheckRow({
-  label,
-  on,
-  onToggle,
-  exclusive,
-}: {
-  label: string;
-  on: boolean;
-  onToggle: () => void;
-  exclusive?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={on}
-      onClick={(e) => {
-        e.stopPropagation();
-        onToggle();
-      }}
-      className={cn(
-        "relative flex w-full cursor-pointer items-center justify-center gap-3 p-3 text-left",
-        "border-t border-grey-100 first:border-t-0",
-        exclusive && !on && "bg-grey-25",
-        on && "bg-purple-100",
-        !exclusive && !on && "bg-white",
-      )}
-    >
-      <span
-        className={cn(
-          "relative grid size-4 shrink-0 place-items-center overflow-hidden rounded-[4px] border",
-          on ? "border-purple-600 bg-purple-600" : "border-grey-300 bg-white",
-        )}
-        aria-hidden
-      >
-        {on && (
-          <IconLeaf src={checkboxCheck} leafW={12} leafH={12} frame={12} />
-        )}
-      </span>
-      <span
-        className={cn(
-          "min-w-0 flex-1 text-sm leading-[18px]",
-          on ? "font-bold" : "font-normal",
-          exclusive ? "text-grey-700" : "text-black",
-        )}
-      >
-        {label}
-      </span>
-    </button>
-  );
-}
-
 function reviewDetailBits(detail: string) {
   return detail
     .split(/\s*;\s*/)
@@ -3277,49 +3238,25 @@ function PlannedWorksForm({
   state,
   onToggle,
   allowUnsure = true,
+  unit,
+  locked,
 }: {
   questions: QuizQuestion[];
   state: QuizState;
   onToggle: (questionId: QuestionId, optionId: string) => void;
   allowUnsure?: boolean;
+  unit?: Unit;
+  locked?: boolean;
 }) {
   return (
-    <div className="flex flex-col gap-4">
-      {questions.map((question) => {
-        const answer = state.answers?.[question.id] ?? { kind: "unanswered" };
-        return (
-          <div key={question.id} className="flex flex-col gap-4">
-            <p className="text-base leading-5 font-bold text-black">
-              {question.prompt}
-            </p>
-            <div className="flex flex-col overflow-hidden rounded-[var(--radius-xl)] border border-grey-200 bg-white">
-              {question.options.map((opt) => (
-                <CheckRow
-                  key={opt.id}
-                  label={opt.label}
-                  on={isOptionOn(answer, opt.id)}
-                  onToggle={() => onToggle(question.id, opt.id)}
-                />
-              ))}
-              <CheckRow
-                label="None of these"
-                exclusive
-                on={isOptionOn(answer, NONE_ID)}
-                onToggle={() => onToggle(question.id, NONE_ID)}
-              />
-              {allowUnsure && (
-                <CheckRow
-                  label="Not sure yet"
-                  exclusive
-                  on={isOptionOn(answer, NOT_SURE_ID)}
-                  onToggle={() => onToggle(question.id, NOT_SURE_ID)}
-                />
-              )}
-            </div>
-          </div>
-        );
-      })}
-    </div>
+    <QuizChecklistForm
+      questions={questions}
+      state={state}
+      unit={unit}
+      onToggle={onToggle}
+      allowUnsure={allowUnsure}
+      locked={locked}
+    />
   );
 }
 
@@ -3631,11 +3568,9 @@ export function ProcessV20Page() {
 
   const worksProgress = quizProgress(quiz, ctxUnit);
   const showWorksSticky =
-    (isContractor || isOfficer) &&
     showQuiz &&
     browsingPhase &&
     !needsContext &&
-    !quizIsConfirmed(quiz) &&
     (active.id === "setup" || active.id === "build");
   const pinWorksSticky =
     showWorksSticky && worksProgress.answered < worksProgress.total;
@@ -3740,10 +3675,13 @@ export function ProcessV20Page() {
 
   const openQuizSheet = (edit = true) => {
     if (role === "tenant") {
-      scrollToStep(QUIZ_STAGE_NAME, QUIZ_STEP_NAME);
+      setQuizSheetOpen(true);
       return;
     }
-    if (role === "contractor" && !quizCanWrite(role, quiz)) return;
+    if (role === "contractor" && !quizCanWrite(role, quiz)) {
+      setQuizSheetOpen(true);
+      return;
+    }
     if (role === "officer") {
       if (edit && quizHasSavedAnswers(quiz)) {
         setOfficerEditGateOpen(true);
@@ -3782,8 +3720,11 @@ export function ProcessV20Page() {
   }, [role]);
 
   useEffect(() => {
-    if (isContractor && quizIsConfirmed(quiz)) setQuizSheetOpen(false);
-  }, [isContractor, quiz]);
+    if (isContractor && quizIsConfirmed(quiz) && contractorDraft) {
+      setContractorDraft(null);
+      setQuizSheetOpen(false);
+    }
+  }, [isContractor, quiz, contractorDraft]);
 
   const quizLocked = quizIsConfirmed(quiz);
 
@@ -4254,11 +4195,12 @@ export function ProcessV20Page() {
           onClose={() => setOfficerLockToastOpen(false)}
         />
       )}
-      {showQuiz &&
-        (isOfficer || (isContractor && quizCanWrite(role, quiz))) && (
+      {showQuiz && (
         <PlannedWorksSheet
           open={quizSheetOpen}
           questions={quizQuestions}
+          unit={ctxUnit}
+          locked={quizIsConfirmed(quiz) && !isOfficer}
           state={
             isOfficer
               ? (officerDraft ?? quiz)
@@ -4266,12 +4208,14 @@ export function ProcessV20Page() {
           }
           allowUnsure={!isOfficer}
           onToggle={(questionId, optionId) => {
+            if (quizIsConfirmed(quiz) && !isOfficer) return;
             if (isOfficer) {
               setOfficerDraft((draft) =>
                 toggleQuestionOption(draft ?? quiz, questionId, optionId),
               );
               return;
             }
+            if (role !== "contractor") return;
             setContractorDraft((draft) =>
               toggleQuestionOption(draft ?? quiz, questionId, optionId),
             );
@@ -5474,7 +5418,7 @@ function PathStep({
                         highlightedDocId={highlightDocId}
                         onPreview={onPreviewDoc}
                       />
-                      {role !== "contractor" ? <ScreenerCta role={role} /> : null}
+                      <ScreenerCta role={role} />
                     </>
                   ) : officerPending ? (
                     <QuizAnswerReview rows={reviewRows} />
@@ -5544,12 +5488,12 @@ function PathStep({
                         highlightedDocId={highlightDocId}
                         onPreview={onPreviewDoc}
                       />
-                      {role !== "contractor" ? <ScreenerCta role={role} /> : null}
+                      <ScreenerCta role={role} />
                     </>
                   ) : (
                     <QuizAnswerReview rows={reviewRows} />
                   )}
-                  {confirmed && !permitResult && role !== "contractor" ? (
+                  {confirmed && !permitResult ? (
                     <ScreenerCta role={role} />
                   ) : null}
                 </div>

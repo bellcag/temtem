@@ -322,16 +322,16 @@ export const STEP_TIMINGS: Record<string, GuideTiming[]> = {
   "Reinstatement::Permit Submission via OneCal 3.0": [
     t(
       "lead",
-      "2 weeks before strip-out",
+      "2 weeks before you remove the fit-out",
       "contractor",
       "RR 1.1 / 3.1(iii)",
       {
         tenant:
-          "Reinstatement needs its own Works Permit about two weeks before strip-out starts.",
+          "File the reinstatement Permit to Work before anyone starts to remove the fit-out.",
         contractor:
-          "Apply for the reinstatement Works Permit about two weeks before strip-out.",
+          "Apply for the reinstatement Permit to Work before you start to remove the fit-out.",
         officer:
-          "Brief: reinstatement is a new permit, same ~2-week lead — not a continuation of the fit-out permit.",
+          "Brief: a new permit, same two-week lead — not a continuation of the fit-out permit.",
       },
     ),
   ],
@@ -1111,6 +1111,7 @@ const CATALOGUE_TIMING: Record<
   },
   "Renovation::Renovation Works & Site Monitoring": {
     sources: ["Renovation::Renovation Works"],
+    generalOnly: true,
   },
   "Renovation::As-Built Drawings Upload": {
     sources: ["Renovation::Pre-Opening Checks and Certifications"],

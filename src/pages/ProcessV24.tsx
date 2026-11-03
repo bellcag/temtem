@@ -698,6 +698,23 @@ function useMobileViewport() {
   return mobile;
 }
 
+/** Lock scroll and drop sticky chrome under the sheet scrim. */
+function useSheetOverlay(active: boolean) {
+  useEffect(() => {
+    if (!active) return;
+    const root = document.documentElement;
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+    root.dataset.sheet = String((Number(root.dataset.sheet) || 0) + 1);
+    return () => {
+      document.body.style.overflow = prev;
+      const next = (Number(root.dataset.sheet) || 1) - 1;
+      if (next <= 0) delete root.dataset.sheet;
+      else root.dataset.sheet = String(next);
+    };
+  }, [active]);
+}
+
 function useDesktopViewport() {
   const [desktop, setDesktop] = useState(
     () =>
@@ -713,21 +730,22 @@ function useDesktopViewport() {
   return desktop;
 }
 
+function canScrollY(overflowY: string) {
+  return overflowY === "auto" || overflowY === "scroll" || overflowY === "overlay";
+}
+
 function nearestScroller(el: HTMLElement | null): HTMLElement | Window {
   const main = document.querySelector("main");
-  if (main instanceof HTMLElement) {
+  if (main instanceof HTMLElement && (!el || main.contains(el))) {
     const { overflowY } = window.getComputedStyle(main);
-    if (
-      (overflowY === "auto" || overflowY === "scroll") &&
-      (!el || main.contains(el))
-    ) {
+    if (canScrollY(overflowY) || main.scrollHeight > main.clientHeight + 1) {
       return main;
     }
   }
   let node: HTMLElement | null = el;
   while (node) {
     const { overflowY } = window.getComputedStyle(node);
-    if (overflowY === "auto" || overflowY === "scroll") return node;
+    if (canScrollY(overflowY)) return node;
     node = node.parentElement;
   }
   return window;
@@ -744,11 +762,20 @@ function setScrollY(
   top: number,
   behavior: ScrollBehavior,
 ) {
-  if (scroller === window) {
-    window.scrollTo({ top, behavior });
+  const y = Math.max(0, top);
+  if (behavior === "auto") {
+    if (scroller === window) {
+      window.scrollTo(0, y);
+      return;
+    }
+    (scroller as HTMLElement).scrollTop = y;
     return;
   }
-  (scroller as HTMLElement).scrollTo({ top, behavior });
+  if (scroller === window) {
+    window.scrollTo({ top: y, behavior });
+    return;
+  }
+  (scroller as HTMLElement).scrollTo({ top: y, behavior });
 }
 
 function visiblePinEl(el: HTMLElement | null): HTMLElement | null {
@@ -767,22 +794,41 @@ function railSafeTop() {
   const barHidden = !bar || window.getComputedStyle(bar).display === "none";
   const barBottom = barHidden ? 0 : bar.getBoundingClientRect().bottom;
   const pin = document.getElementById("process-guide-mobile-pin");
-  const pinStuck = Boolean(
-    pin && window.getComputedStyle(pin).position === "sticky",
-  );
-  if (pinStuck && pin) {
-    return barBottom + pin.offsetHeight + 16;
-  }
   if (pin && visiblePinEl(pin)) {
-    return pin.getBoundingClientRect().bottom + 16;
+    return pin.getBoundingClientRect().bottom + 8;
   }
-  return Math.max(barBottom, 16) + 16;
+  return Math.max(barBottom, 16) + 8;
 }
 
-/** Keep an open card fully on screen — below sticky chrome, above the fold. */
+/** Sit a chapter heading just under the sticky Topics pin. */
+function pinSectionToRail(el: HTMLElement, behavior: ScrollBehavior = "smooth") {
+  const scroller = nearestScroller(el);
+  const pin = railPinEl();
+  const pinBottom = pin
+    ? pin.getBoundingClientRect().bottom
+    : railSafeTop();
+  const delta = el.getBoundingClientRect().top - (pinBottom + 8);
+  if (Math.abs(delta) < 2) return;
+  setScrollY(scroller, scrollYOf(scroller) + delta, behavior);
+}
+
+/** Keep an open card’s title in view under sticky chrome — don’t yank it to the top. */
 function alignCardToRail(el: HTMLElement, behavior: ScrollBehavior = "smooth") {
   const scroller = nearestScroller(el);
   const pinTop = railSafeTop();
+  const header =
+    el.querySelector<HTMLElement>("button[aria-expanded]") ?? el;
+  const headerRect = header.getBoundingClientRect();
+  const mobile = window.matchMedia("(max-width: 767px)").matches;
+
+  if (mobile) {
+    if (headerRect.top >= pinTop - 2) return;
+    const delta = headerRect.top - pinTop;
+    if (Math.abs(delta) < 2) return;
+    setScrollY(scroller, scrollYOf(scroller) + delta, behavior);
+    return;
+  }
+
   const rect = el.getBoundingClientRect();
   const viewBottom =
     scroller === window
@@ -2023,6 +2069,8 @@ function PartyHead({ labels }: { labels: string[] }) {
   );
 }
 
+const PARTY_LINE_PREVIEW = 2;
+
 function PartyLineList({
   rows,
   size = "body",
@@ -2035,38 +2083,81 @@ function PartyLineList({
   return (
     <div className={showHeads ? "flex flex-col gap-4" : undefined}>
       {groups.map((group, gi) => (
-        <div
+        <PartyLineGroup
           key={`${gi}-${group.key}`}
-          className={cn(
-            "flex flex-col gap-2",
-            showHeads &&
-              group.labels.length > 0 &&
-              cn(
-                "rounded-[var(--radius-md)] px-3 py-3",
-                group.labels.length === 1 && group.labels[0] === "You"
-                  ? "bg-purple-100"
-                  : "bg-grey-50",
-              ),
-          )}
-        >
-          {showHeads && group.labels.length > 0 && (
-            <PartyHead labels={group.labels} />
-          )}
-          <ul
-            className={
-              size === "how" ? "flex flex-col gap-3" : "flex flex-col gap-2"
-            }
-          >
-            {group.rows.map((row, i) => (
-              <GuideBullet
-                key={`${i}-${row.line}`}
-                line={row.line}
-                size={size}
-              />
-            ))}
-          </ul>
-        </div>
+          group={group}
+          showHead={showHeads}
+          size={size}
+        />
       ))}
+    </div>
+  );
+}
+
+function PartyLineGroup({
+  group,
+  showHead,
+  size,
+}: {
+  group: { key: string; labels: string[]; rows: { line: string }[] };
+  showHead: boolean;
+  size: "body" | "how";
+}) {
+  const [open, setOpen] = useState(false);
+  const extra = group.rows.length > PARTY_LINE_PREVIEW;
+  const shown =
+    extra && !open ? group.rows.slice(0, PARTY_LINE_PREVIEW) : group.rows;
+  return (
+    <div
+      className={cn(
+        "flex flex-col gap-2",
+        showHead &&
+          group.labels.length > 0 &&
+          cn(
+            "rounded-[var(--radius-md)] px-3 py-3",
+            group.labels.length === 1 && group.labels[0] === "You"
+              ? "bg-purple-100"
+              : "bg-grey-50",
+          ),
+      )}
+    >
+      {showHead && group.labels.length > 0 && (
+        <PartyHead labels={group.labels} />
+      )}
+      <ul
+        className={
+          size === "how" ? "flex flex-col gap-3" : "flex flex-col gap-2"
+        }
+      >
+        {shown.map((row, i) => (
+          <GuideBullet
+            key={`${i}-${row.line}`}
+            line={row.line}
+            size={size}
+          />
+        ))}
+      </ul>
+      {extra ? (
+        <button
+          type="button"
+          aria-expanded={open}
+          onClick={(e) => {
+            e.stopPropagation();
+            setOpen((v) => !v);
+          }}
+          className="inline-flex items-center gap-1 self-start text-sm leading-[18px] font-bold text-purple-600 hover:text-purple-700 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]"
+        >
+          {open ? "Less" : "More"}
+          <IconLeaf
+            src={caretDown}
+            leafW={10}
+            leafH={5.83}
+            frame={16}
+            rotate={open ? 180 : undefined}
+            colorClass="text-current"
+          />
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -2397,12 +2488,13 @@ function FilterOptionList({
 }) {
   return (
     <ul className="min-h-0 flex-1 overflow-y-auto py-1">
-      {options.map((option) => {
+      {options.map((option, index) => {
         const isSelected = option.value === selectedValue;
         const isGroup = option.tone === "group";
         const isItem = option.tone === "item";
+        const newSection = isGroup && index > 0;
         return (
-          <li key={option.value}>
+          <li key={option.value} className={newSection ? "mt-4" : undefined}>
             <button
               type="button"
               aria-current={isSelected ? "true" : undefined}
@@ -2410,10 +2502,11 @@ function FilterOptionList({
               className={cn(
                 "flex w-full items-baseline justify-between gap-3 py-3 text-left text-sm leading-[18px] tablet:text-base tablet:leading-5",
                 isItem ? "pr-4 pl-8" : "px-4",
-                isGroup && !isSelected && "font-bold",
-                isSelected && "bg-purple-100 font-bold text-purple-700",
-                !isSelected && isGroup && "text-grey-500",
-                !isSelected && !isGroup && "text-black",
+                isSelected
+                  ? "bg-purple-100 font-bold text-purple-700"
+                  : isGroup
+                    ? "font-bold text-black"
+                    : "font-normal text-black",
               )}
             >
               <span className="min-w-0">
@@ -2440,37 +2533,69 @@ function FilterOptionList({
   );
 }
 
+type FindResultKind = "file" | "system" | "guide";
+
+const FIND_KIND_OPTIONS: { value: FindResultKind; label: string }[] = [
+  { value: "file", label: "Files" },
+  { value: "system", label: "Systems" },
+  { value: "guide", label: "Steps" },
+];
+
+function findKindOptions(
+  counts: Record<FindResultKind, number>,
+  chapters: { phaseId: PhaseDeskId; groupId: string; title: string; count: number }[],
+): DropdownOption[] {
+  return [
+    { value: "all", label: "All", tone: "group" },
+    ...FIND_KIND_OPTIONS.flatMap((kind) => {
+      if (counts[kind.value] === 0) return [];
+      const head: DropdownOption = {
+        value: kind.value,
+        label: kind.label,
+        tone: "group",
+        hint: String(counts[kind.value]),
+      };
+      if (kind.value !== "guide") return [head];
+      return [
+        head,
+        ...chapters.map((chapter) => ({
+          value: `topic:${chapter.phaseId}:${chapter.groupId}`,
+          label: chapter.title,
+          tone: "item" as const,
+          hint: String(chapter.count),
+        })),
+      ];
+    }),
+  ];
+}
+
 function SearchFilter({
   open,
   active,
   disabled,
-  phases,
   value,
-  topicId,
   counts,
+  chapters,
   onOpen,
   onClose,
   onChange,
-  onSelectTopic,
 }: {
   open: boolean;
   active: boolean;
   disabled?: boolean;
-  phases: PhaseDeskId[];
-  value: PhaseDeskId | null;
-  topicId: string | null;
-  counts: Record<string, number>;
+  value: string;
+  counts: Record<FindResultKind, number>;
+  chapters: { phaseId: PhaseDeskId; groupId: string; title: string; count: number }[];
   onOpen: () => void;
   onClose: () => void;
-  onChange: (phaseId: PhaseDeskId | null) => void;
-  onSelectTopic: (phaseId: PhaseDeskId, groupId: string | null) => void;
+  onChange: (next: string) => void;
 }) {
   const mobile = useMobileViewport();
   const rootRef = useRef<HTMLDivElement | null>(null);
-  const options = topicFilterOptions(phases, counts, true);
-  const selectedValue = topicFilterValue(true, value, topicId);
+  const options = findKindOptions(counts, chapters);
+  const selectedValue = value;
   const pick = (next: string) => {
-    applyTopicFilterValue(next, onChange, onSelectTopic);
+    onChange(next);
     onClose();
   };
 
@@ -2492,14 +2617,7 @@ function SearchFilter({
     return () => window.removeEventListener("pointerdown", onDoc);
   }, [open, mobile, onClose]);
 
-  useEffect(() => {
-    if (!open || !mobile) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [open, mobile]);
+  useSheetOverlay(open && mobile);
 
   const header = (
     <header className="flex items-center justify-between gap-3 border-b border-grey-75 px-4 py-3">
@@ -2540,7 +2658,7 @@ function SearchFilter({
       ) : null}
       {open && mobile
         ? createPortal(
-            <div className="fixed inset-0 z-50 flex items-end justify-center">
+            <div className="fixed inset-0 z-[60] flex items-end justify-center">
               <button
                 type="button"
                 aria-label="Close filter"
@@ -2565,6 +2683,19 @@ function SearchFilter({
           )
         : null}
     </div>
+  );
+}
+
+/** `_Atoms/CategoryName` count — 24px Grey/100, XXSmall 10/12 Bold Grey/600. */
+function CategoryCountBadge({ n }: { n: number }) {
+  if (n <= 0) return null;
+  return (
+    <span
+      aria-hidden
+      className="grid size-6 shrink-0 place-items-center rounded-full bg-grey-100 p-1 text-[10px] leading-3 font-bold text-grey-600"
+    >
+      {n}
+    </span>
   );
 }
 
@@ -2620,7 +2751,7 @@ function ChapterRail({
     return (
       <div className="flex flex-col gap-3">
         {hideHeading ? null : <p className={LABEL_CAPS}>Topics</p>}
-        <div className="flex flex-col gap-1" role="group" aria-label="Topics">
+        <div className="flex flex-col gap-3" role="group" aria-label="Topics">
           {phaseTopics.map((topic) => {
             const on = topicId === topic.id;
             const n = counts[topicValue(topic.phaseId, topic.id)] ?? 0;
@@ -2634,27 +2765,14 @@ function ChapterRail({
                   onSelectTopic(topic.phaseId, on ? null : topic.id)
                 }
                 className={cn(
-                  "flex w-full items-center justify-between gap-3 rounded-[var(--radius-sm)] px-3 py-2 text-left text-sm leading-[18px]",
+                  "flex w-full items-center gap-2 py-1 pr-4 text-left text-base leading-5 text-grey-700",
                   "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]",
                   "disabled:opacity-40",
-                  on
-                    ? "bg-white font-bold text-purple-600"
-                    : "text-black hover:bg-grey-25",
+                  on ? "font-bold" : "font-normal hover:bg-grey-25",
                 )}
               >
-                <span className="min-w-0">{topic.title}</span>
-                {n > 0 ? (
-                  <span
-                    className={cn(
-                      "shrink-0 rounded-full px-2 py-0.5 text-xs leading-4 font-bold",
-                      on
-                        ? "bg-purple-200 text-purple-700"
-                        : "bg-grey-75 text-grey-600",
-                    )}
-                  >
-                    {n}
-                  </span>
-                ) : null}
+                <span className="min-w-0 flex-1">{topic.title}</span>
+                <CategoryCountBadge n={n} />
               </button>
             );
           })}
@@ -2666,7 +2784,7 @@ function ChapterRail({
   return (
     <div className="flex flex-col gap-3">
       <p className={LABEL_CAPS}>Topics</p>
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-3">
         {phases.map((id) => {
           const rows = topics.filter((topic) => topic.phaseId === id);
           if (rows.length === 0 && !searching) return null;
@@ -2677,7 +2795,7 @@ function ChapterRail({
             0,
           );
           return (
-            <div key={id} className="flex flex-col gap-0.5">
+            <div key={id} className="flex flex-col gap-3">
               <button
                 type="button"
                 disabled={disabled}
@@ -2685,20 +2803,14 @@ function ChapterRail({
                 aria-current={expanded ? "location" : undefined}
                 onClick={() => onSelectPhase(id)}
                 className={cn(
-                  "flex w-full items-center gap-2 rounded-[var(--radius-sm)] px-3 text-left text-sm leading-[18px] font-bold",
+                  "flex w-full items-center gap-2 py-1 pr-4 text-left text-base leading-5 text-grey-700",
                   "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]",
                   "disabled:opacity-40",
-                  expanded
-                    ? "py-2 text-purple-600"
-                    : "py-2 text-grey-500 hover:bg-grey-25 hover:text-grey-700",
+                  expanded ? "font-bold" : "font-normal hover:bg-grey-25",
                 )}
               >
                 <span className="min-w-0 flex-1">{TAB_LABEL[id]}</span>
-                {!expanded && phaseCount > 0 ? (
-                  <span className="shrink-0 text-xs leading-4 text-grey-400">
-                    {phaseCount}
-                  </span>
-                ) : null}
+                {expanded ? null : <CategoryCountBadge n={phaseCount} />}
               </button>
               {expanded
                 ? rows.map((topic) => {
@@ -2713,23 +2825,14 @@ function ChapterRail({
                         aria-current={on ? "location" : undefined}
                         onClick={() => onSelectTopic(topic.phaseId, topic.id)}
                         className={cn(
-                          "flex w-full items-baseline justify-between gap-3 rounded-[var(--radius-sm)] py-2 pr-3 pl-8 text-left text-sm leading-[18px]",
+                          "flex w-full items-center gap-2 py-1 pr-4 pl-8 text-left text-base leading-5 text-grey-700",
                           "focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]",
                           "disabled:opacity-40",
-                          on
-                            ? "bg-white font-bold text-purple-600"
-                            : "text-black hover:bg-grey-25",
+                          on ? "font-bold" : "font-normal hover:bg-grey-25",
                         )}
                       >
-                        <span>{topic.title}</span>
-                        <span
-                          className={cn(
-                            "shrink-0 text-xs leading-4 font-normal",
-                            on ? "text-purple-500" : "text-grey-400",
-                          )}
-                        >
-                          {n}
-                        </span>
+                        <span className="min-w-0 flex-1">{topic.title}</span>
+                        <CategoryCountBadge n={n} />
                       </button>
                     );
                   })
@@ -2769,6 +2872,7 @@ function ProcessFind({
   chips,
   keywords,
   hits,
+  resultKind = null,
   disabled,
   trailing,
   showChips = true,
@@ -2782,6 +2886,7 @@ function ProcessFind({
   chips: readonly string[];
   keywords: readonly string[];
   hits: ProcessFindHit[];
+  resultKind?: FindResultKind | null;
   disabled?: boolean;
   trailing?: ReactNode;
   showChips?: boolean;
@@ -2798,14 +2903,16 @@ function ProcessFind({
   const skipFocusOpen = useRef(false);
   const [open, setOpen] = useState(false);
   const typed = Boolean(normalizeQuery(query));
-  const suggestions = suggestKeywords(query, typed ? keywords : chips);
+  const suggestions = resultKind
+    ? []
+    : suggestKeywords(query, typed ? keywords : chips);
   const fileHits = typed ? hits.filter((hit) => hit.kind === "file") : [];
   const systemHits = typed ? hits.filter((hit) => hit.kind === "system") : [];
   const stepHits = typed ? hits.filter((hit) => hit.kind === "guide") : [];
   const peekKinds = [fileHits, systemHits, stepHits].filter(
     (list) => list.length > 0,
   ).length;
-  const peekEach = peekKinds > 1 ? 1 : 2;
+  const peekEach = resultKind ? 8 : peekKinds > 1 ? 1 : 2;
   const peekFiles = fileHits.slice(0, peekEach);
   const peekSystems = systemHits.slice(0, peekEach);
   const peekSteps = stepHits.slice(0, peekEach);
@@ -2831,11 +2938,11 @@ function ProcessFind({
   const closeOverlay = () => setOpen(false);
 
   return (
-    <div>
+    <div className={cn(showOverlay && "relative z-40")}>
       <div className={cn(trailing && "flex items-center gap-3")}>
         <div
           ref={rootRef}
-          className={cn("relative min-w-0 flex-1", showOverlay && "z-30")}
+          className={cn("relative min-w-0 flex-1", showOverlay && "z-40")}
         >
           <form
             role="search"
@@ -2899,7 +3006,7 @@ function ProcessFind({
               id={listId}
               role="listbox"
               aria-label="Suggested guides"
-              className="absolute inset-x-0 top-full z-20 -mt-1 max-h-[min(28rem,70dvh)] overflow-y-auto rounded-[var(--radius-2xl)] border border-grey-200 bg-white pt-1 pb-2 shadow-[var(--shadow-light-bg)]"
+              className="absolute inset-x-0 top-full z-40 mt-1 max-h-[min(28rem,70dvh)] overflow-y-auto rounded-[var(--radius-2xl)] border border-grey-200 bg-white pt-1 pb-2 shadow-[var(--shadow-light-bg)]"
             >
               {suggestions.length > 0 ? (
                 <div>
@@ -3316,6 +3423,7 @@ function PhaseDesk({
     ? stepFocusKey(focusStep.stageName, focusStep.stepName)
     : null;
   const [openStepKey, setOpenStepKey] = useState<string | null>(focusKey);
+  const openedByTap = useRef(false);
 
   useEffect(() => {
     setOpenStepKey(focusKey);
@@ -3343,6 +3451,18 @@ function PhaseDesk({
     if (!el) return;
     const frame =
       el.parentElement instanceof HTMLElement ? el.parentElement : el;
+    const tapped = openedByTap.current;
+    openedByTap.current = false;
+
+    // A tap already has the card on screen. Don't dock it to Topics —
+    // that snap is what felt too sharp. Only lift it if the title
+    // ended up under the sticky pin.
+    if (tapped) {
+      const header =
+        frame.querySelector<HTMLElement>("button[aria-expanded]") ?? frame;
+      if (header.getBoundingClientRect().top >= railSafeTop() - 2) return;
+    }
+
     const align = () => alignCardToRail(frame, "smooth");
     let inner = 0;
     const outer = window.requestAnimationFrame(() => {
@@ -3399,7 +3519,7 @@ function PhaseDesk({
           id={`topic-${group.id}`}
           aria-label={group.title}
           className={cn(
-            "flex scroll-mt-[12rem] flex-col tablet:scroll-mt-8",
+            "flex scroll-mt-[8rem] flex-col tablet:scroll-mt-8",
             openId ? "gap-5" : "gap-3",
           )}
         >
@@ -3474,14 +3594,20 @@ function PhaseDesk({
                               item.classified.step.name,
                             )}
                             data-step-key={key}
-                            className="scroll-mt-[12rem] tablet:scroll-mt-8"
+                            className="scroll-mt-0 tablet:scroll-mt-8"
                           >
                             <button
                               type="button"
                               aria-expanded={stepOpen}
-                              onClick={() =>
-                                setOpenStepKey(stepOpen ? null : key)
-                              }
+                              onClick={(event) => {
+                                if (!stepOpen) {
+                                  openedByTap.current = true;
+                                  event.currentTarget.focus({
+                                    preventScroll: true,
+                                  });
+                                }
+                                setOpenStepKey(stepOpen ? null : key);
+                              }}
                               className={cn(
                                 "flex w-full items-start gap-3 px-5 py-4 text-left tablet:px-6",
                                 stepOpen ? "pb-4" : "hover:bg-grey-25",
@@ -5655,6 +5781,7 @@ export function ProcessV24Page() {
   const [searchQuery, setSearchQuery] = useState("");
   const [findSuggestOpen, setFindSuggestOpen] = useState(false);
   const [filterSheetOpen, setFilterSheetOpen] = useState(false);
+  const [findKind, setFindKind] = useState<FindResultKind | null>(null);
   const [findPhaseId, setFindPhaseId] = useState<PhaseDeskId | null>(null);
   const [findGroupId, setFindGroupId] = useState<string | null>(null);
   const [openFindKey, setOpenFindKey] = useState<string | null>(null);
@@ -5798,7 +5925,8 @@ export function ProcessV24Page() {
   const jumpTopic = (phaseId: PhaseDeskId, groupId: string) => {
     window.localStorage.setItem(LS_KEY, phaseId);
     setSearchFocus(null);
-    setOpenGroupId(groupId);
+    setOpenGroupId(null);
+    setSpyTopicId(groupId);
     setSearchParams({ phase: phaseId, chapter: groupId });
   };
 
@@ -5879,7 +6007,7 @@ export function ProcessV24Page() {
   const active =
     visiblePhases.find((p) => p.id === phaseFromUrl) ??
     visiblePhases.find((p) => p.id === savedPhase) ??
-    visiblePhases.find((p) => p.id === "operate") ??
+    visiblePhases.find((p) => p.id === "setup") ??
     visiblePhases[0] ??
     PHASES[0];
 
@@ -6086,19 +6214,63 @@ export function ProcessV24Page() {
   }, [typedQuery]);
   const showMapTopics = isCompact && !typedQuery && !needsContext;
 
+  const findKindCounts = useMemo(
+    () => ({
+      guide: searchHits.filter((hit) => hit.kind === "guide").length,
+      file: searchHits.filter((hit) => hit.kind === "file").length,
+      system: searchHits.filter((hit) => hit.kind === "system").length,
+    }),
+    [searchHits],
+  );
+
+  const findChapters = useMemo(
+    () =>
+      groupGuideHits(searchHits).flatMap((phase) =>
+        phase.chapters.map((chapter) => ({
+          phaseId: phase.phaseId,
+          groupId: chapter.groupId,
+          title: chapter.title,
+          count: chapter.hits.length,
+        })),
+      ),
+    [searchHits],
+  );
+
+  useEffect(() => {
+    if (findKind && findKindCounts[findKind] === 0) {
+      setFindKind(null);
+      setFindPhaseId(null);
+      setFindGroupId(null);
+    }
+  }, [findKind, findKindCounts]);
+
+  useEffect(() => {
+    if (
+      findGroupId &&
+      !findChapters.some(
+        (chapter) =>
+          chapter.groupId === findGroupId &&
+          (!findPhaseId || chapter.phaseId === findPhaseId),
+      )
+    ) {
+      setFindGroupId(null);
+      setFindPhaseId(null);
+    }
+  }, [findGroupId, findPhaseId, findChapters]);
+
   const filteredHits = useMemo(
     () =>
       searchHits.filter((hit) => {
-        if (hit.kind === "file" || hit.kind === "system") {
-          if (findPhaseId && !hit.phaseIds.includes(findPhaseId)) return false;
-          if (findGroupId && !hit.groupIds.includes(findGroupId)) return false;
-          return true;
+        if (!findKind) return true;
+        if (hit.kind !== findKind) return false;
+        if (findKind === "guide" && findGroupId) {
+          if (hit.kind !== "guide") return false;
+          if (hit.groupId !== findGroupId) return false;
+          if (findPhaseId && hit.phaseId !== findPhaseId) return false;
         }
-        if (findPhaseId && hit.phaseId !== findPhaseId) return false;
-        if (findGroupId && hit.groupId !== findGroupId) return false;
         return true;
       }),
-    [searchHits, findPhaseId, findGroupId],
+    [searchHits, findKind, findPhaseId, findGroupId],
   );
 
   const searchChips = useMemo(
@@ -6116,6 +6288,7 @@ export function ProcessV24Page() {
 
   const pickFindChip = (chip: string) => {
     setSearchQuery(chip);
+    setFindKind(null);
     setFindPhaseId(null);
     setFindGroupId(null);
     setOpenFindKey(null);
@@ -6124,6 +6297,7 @@ export function ProcessV24Page() {
   const handleSearchQuery = (value: string) => {
     setSearchQuery(value);
     if (!normalizeQuery(value)) {
+      setFindKind(null);
       setFindPhaseId(null);
       setFindGroupId(null);
       setOpenFindKey(null);
@@ -6131,11 +6305,6 @@ export function ProcessV24Page() {
   };
 
   const handleSelectPhase = (phaseId: PhaseDeskId | null) => {
-    if (typedQuery) {
-      setFindPhaseId(phaseId);
-      setFindGroupId(null);
-      return;
-    }
     if (phaseId) selectPhase(phaseId);
   };
 
@@ -6143,11 +6312,6 @@ export function ProcessV24Page() {
     phaseId: PhaseDeskId,
     groupId: string | null,
   ) => {
-    if (typedQuery) {
-      setFindPhaseId(phaseId);
-      setFindGroupId(groupId);
-      return;
-    }
     if (groupId) jumpTopic(phaseId, groupId);
     else selectPhase(phaseId);
   };
@@ -6291,12 +6455,7 @@ export function ProcessV24Page() {
   const deskGroupIdSig = deskGroups.map((row) => row.group.id).join("/");
   const chapterIds = deskGroups.map((row) => row.group.id);
   useEffect(() => {
-    if (chapterFromUrl && chapterIds.includes(chapterFromUrl)) {
-      setOpenGroupId(chapterFromUrl);
-      return;
-    }
-    setOpenGroupId(null);
-    if (!chapterFromUrl) return;
+    if (!chapterFromUrl || chapterIds.includes(chapterFromUrl)) return;
     const next: Record<string, string> = { phase: active.id };
     const quiz = params.get("quiz");
     if (quiz) next.quiz = quiz;
@@ -6316,12 +6475,10 @@ export function ProcessV24Page() {
     [active.id],
   );
 
-  const highlightTopicId = typedQuery
-    ? findGroupId
-    : (openGroupId ?? spyTopicId ?? openCardTopicId);
+  const highlightTopicId = chapterFromUrl ?? spyTopicId ?? openCardTopicId;
 
   useEffect(() => {
-    if (typedQuery || needsContext || openGroupId) {
+    if (typedQuery || needsContext) {
       setSpyTopicId(null);
       return;
     }
@@ -6338,12 +6495,16 @@ export function ProcessV24Page() {
       const line = railSafeTop();
       let current: string | null = null;
       for (const section of sections) {
-        if (section.getBoundingClientRect().top <= line + 8) {
+        const box = section.getBoundingClientRect();
+        if (box.top <= line + 8 && box.bottom > line) {
           current = section.id.replace(/^topic-/, "");
         }
       }
       if (!current) {
-        current = sections[0].id.replace(/^topic-/, "");
+        current =
+          sections.find((section) => section.getBoundingClientRect().top > line)
+            ?.id.replace(/^topic-/, "") ??
+          sections[0].id.replace(/^topic-/, "");
       }
       setSpyTopicId(current);
     };
@@ -6361,17 +6522,28 @@ export function ProcessV24Page() {
       window.removeEventListener("resize", sync);
       ro.disconnect();
     };
-  }, [typedQuery, needsContext, openGroupId, active.id, deskGroupIdSig, guideItems]);
+  }, [typedQuery, needsContext, active.id, deskGroupIdSig, guideItems]);
 
   useEffect(() => {
-    if (!isCompact || !openGroupId) return;
-    const el = document.getElementById(`topic-${openGroupId}`);
-    if (!el) return;
-    const raf = window.requestAnimationFrame(() => {
-      alignCardToRail(el, "auto");
+    if (!chapterFromUrl) return;
+    let inner = 0;
+    let timeout = 0;
+    const run = () => {
+      const el = document.getElementById(`topic-${chapterFromUrl}`);
+      if (!el) return;
+      pinSectionToRail(el, "smooth");
+    };
+    const outer = window.requestAnimationFrame(() => {
+      inner = window.requestAnimationFrame(() => {
+        timeout = window.setTimeout(run, 200);
+      });
     });
-    return () => window.cancelAnimationFrame(raf);
-  }, [isCompact, openGroupId, active.id]);
+    return () => {
+      window.cancelAnimationFrame(outer);
+      window.cancelAnimationFrame(inner);
+      window.clearTimeout(timeout);
+    };
+  }, [chapterFromUrl, active.id, deskGroupIdSig]);
 
   useEffect(() => {
     if (!openFindKey) return;
@@ -6678,28 +6850,54 @@ export function ProcessV24Page() {
           </div>
         </header>
 
-          <div className="mt-3">
+          <div
+            className={cn(
+              "mt-6 tablet:mt-8",
+              findSuggestOpen && "relative z-40",
+            )}
+          >
             <ProcessFind
               query={searchQuery}
               chips={searchChips}
               keywords={searchKeywords}
               hits={filteredHits}
+              resultKind={findKind}
               disabled={needsContext}
               showChips={false}
               trailing={
                 typedQuery && !needsContext ? (
                   <SearchFilter
                     open={filterSheetOpen}
-                    active={Boolean(findPhaseId || findGroupId)}
+                    active={Boolean(findKind)}
                     disabled={needsContext}
-                    phases={visiblePhaseIds}
-                    value={findPhaseId}
-                    topicId={findGroupId}
-                    counts={topicCounts}
+                    value={
+                      findKind && findGroupId && findPhaseId
+                        ? `topic:${findPhaseId}:${findGroupId}`
+                        : (findKind ?? "all")
+                    }
+                    counts={findKindCounts}
+                    chapters={findChapters}
                     onOpen={() => setFilterSheetOpen(true)}
                     onClose={() => setFilterSheetOpen(false)}
-                    onChange={handleSelectPhase}
-                    onSelectTopic={handleSelectTopic}
+                    onChange={(next) => {
+                      if (next === "all") {
+                        setFindKind(null);
+                        setFindPhaseId(null);
+                        setFindGroupId(null);
+                        return;
+                      }
+                      if (next.startsWith("topic:")) {
+                        const rest = next.slice("topic:".length);
+                        const sep = rest.indexOf(":");
+                        setFindKind("guide");
+                        setFindPhaseId(rest.slice(0, sep) as PhaseDeskId);
+                        setFindGroupId(rest.slice(sep + 1));
+                        return;
+                      }
+                      setFindKind(next as FindResultKind);
+                      setFindPhaseId(null);
+                      setFindGroupId(null);
+                    }}
                   />
                 ) : undefined
               }
@@ -6723,7 +6921,7 @@ export function ProcessV24Page() {
           {showMapTopics ? (
             <div
               id="process-guide-mobile-pin"
-              className="sticky top-14 z-20 mt-2 border-b border-grey-100 bg-grey-50 py-4"
+              className="sticky top-14 z-20 -mx-4 bg-grey-50 px-4 py-2 tablet:-mx-8 tablet:px-8 desktop:-mx-10 desktop:px-10"
             >
               <PhaseTabs
                 phases={visiblePhaseIds}
@@ -6737,10 +6935,10 @@ export function ProcessV24Page() {
             </div>
           ) : null}
 
-          <div className="mt-5 grid grid-cols-1 gap-6 tablet:mt-6 tablet:grid-cols-12 tablet:items-start">
+          <div className="relative z-0 mt-5 grid grid-cols-1 gap-6 tablet:mt-6 tablet:grid-cols-12 tablet:items-start">
             {typedQuery ? null : (
               <aside
-                className="hidden min-w-0 tablet:sticky tablet:top-8 tablet:col-span-4 tablet:col-start-1 tablet:flex tablet:flex-col tablet:gap-3 tablet:self-start desktop:col-span-3"
+                className="hidden min-w-0 tablet:sticky tablet:top-8 tablet:z-10 tablet:col-span-4 tablet:col-start-1 tablet:flex tablet:flex-col tablet:gap-3 tablet:self-start desktop:col-span-3"
               >
                 <ChapterRail
                   phases={visiblePhaseIds}
@@ -6748,9 +6946,6 @@ export function ProcessV24Page() {
                   openGroupId={openGroupId}
                   activeGroupId={spyTopicId ?? openCardTopicId}
                   counts={topicCounts}
-                  searching={typedQuery}
-                  findPhaseId={findPhaseId}
-                  findGroupId={findGroupId}
                   disabled={needsContext}
                   onSelectPhase={handleSelectPhase}
                   onSelectTopic={handleSelectTopic}
@@ -6987,14 +7182,7 @@ function DropdownField({
     return () => window.removeEventListener("keydown", onKey);
   }, [open, selectedIndex, mobile]);
 
-  useEffect(() => {
-    if (!open || !mobile) return;
-    const prev = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-    return () => {
-      document.body.style.overflow = prev;
-    };
-  }, [open, mobile]);
+  useSheetOverlay(open && mobile);
 
   useEffect(() => {
     if (!open) return;
@@ -7168,7 +7356,7 @@ function DropdownField({
       )}
       {open && mobile
         ? createPortal(
-            <div className="fixed inset-0 z-50 flex items-end justify-center">
+            <div className="fixed inset-0 z-[60] flex items-end justify-center">
               <button
                 type="button"
                 aria-label={`Close ${label}`}

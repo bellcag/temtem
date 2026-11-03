@@ -47,22 +47,22 @@ export const screenerCopy = {
   tabCurrent: "Current pack",
   tabHistory: "History",
   lockedNote:
-    "This list cannot be changed here. If the job changes, the project officer corrects answers on Works.",
-  introContractor: "Upload supporting documents for the permits locked on Works.",
-  introOfficer: "Check the contractor's pack for the permits locked on Works.",
-  introTenant: "Read the permits locked on Works.",
+    "This list cannot be changed here. If the job changes, the project officer corrects Planned works answers.",
+  introContractor: "Upload supporting documents for the permits locked from Planned works.",
+  introOfficer: "Check the contractor's pack for the permits locked from Planned works.",
+  introTenant: "Read the permits locked from Planned works.",
   waitingContractor:
-    "The project officer locks this list on Works, before the IFM briefing and permits.",
-  waitingOfficer: "Lock the works list on Works first.",
-  waitingTenant: "Wait for the Project Officer to lock the list on Works.",
-  waitingCta: "Open Works",
+    "The project officer locks this list when they confirm Planned works.",
+  waitingOfficer: "Confirm Planned works first.",
+  waitingTenant: "Wait for the Project Officer to confirm Planned works.",
+  waitingCta: "Open Process",
   attachCta: "Attach",
   removeCta: "Remove",
   attached: "Attached",
   notAttached: "Not attached yet",
   noDocs:
     "No supporting documents listed in the blueprint or Renovation Requirements.",
-  historyEmpty: "No locked pack yet. Lock a works list on Works first.",
+  historyEmpty: "No locked pack yet. Confirm Planned works first.",
   historyRow: "Application pack",
   unscoped: "Choose a unit on Process first.",
 };
@@ -131,6 +131,31 @@ export function canAttachDoc(role: Role, doc: SupportingDoc) {
   return role === "contractor" && doc.supplier === "contractor";
 }
 
+export function screenerPackFromNames(
+  names: string[],
+  attachments: Record<string, ScreenerAttachment>,
+): ScreenerPack {
+  const permits: ScreenerPermit[] = names.map((name) => {
+    const supporting = supportingDocsFor(name);
+    const required = supporting.docs.filter(isRequiredDoc);
+    const attachedRequired = required.filter(
+      (doc) => attachments[docAttachKey(name, doc.name)],
+    ).length;
+    return {
+      name,
+      supporting,
+      requiredCount: required.length,
+      attachedRequired,
+    };
+  });
+  return {
+    locked: true,
+    permits,
+    requiredCount: permits.reduce((n, p) => n + p.requiredCount, 0),
+    attachedRequired: permits.reduce((n, p) => n + p.attachedRequired, 0),
+  };
+}
+
 export function screenerPackFor(
   state: QuizState,
   unit: Unit,
@@ -194,6 +219,13 @@ export function screenerPackForJob(
   };
 }
 
+export function lockedQuizForScreener(unitId: string): QuizState | null {
+  const job = latestLockedWorksJob(unitId);
+  if (job && quizIsConfirmed(job.quiz)) return job.quiz;
+  const quiz = readQuizState(unitId);
+  return quizIsConfirmed(quiz) ? quiz : null;
+}
+
 export function useLiveLockedWorksJob(unitId: string): WorksJob | null {
   const [job, setJob] = useState(() => latestLockedWorksJob(unitId));
   const [seenId, setSeenId] = useState(unitId);
@@ -214,6 +246,30 @@ export function useLiveLockedWorksJob(unitId: string): WorksJob | null {
     };
   }, [unitId]);
   return job;
+}
+
+export function useLiveLockedQuiz(unitId: string): QuizState | null {
+  const [state, setState] = useState(() => lockedQuizForScreener(unitId));
+  const [seenId, setSeenId] = useState(unitId);
+  if (seenId !== unitId) {
+    setSeenId(unitId);
+    setState(lockedQuizForScreener(unitId));
+  }
+  useEffect(() => {
+    const refresh = () => setState(lockedQuizForScreener(unitId));
+    refresh();
+    window.addEventListener("storage", refresh);
+    window.addEventListener("focus", refresh);
+    window.addEventListener(WORKS_CHANGED_EVENT, refresh);
+    window.addEventListener(QUIZ_CHANGED_EVENT, refresh);
+    return () => {
+      window.removeEventListener("storage", refresh);
+      window.removeEventListener("focus", refresh);
+      window.removeEventListener(WORKS_CHANGED_EVENT, refresh);
+      window.removeEventListener(QUIZ_CHANGED_EVENT, refresh);
+    };
+  }, [unitId]);
+  return state;
 }
 
 export function screenerIntro(role: Role) {

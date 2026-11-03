@@ -26,6 +26,8 @@
 
   /* Colors/Blue — Status Chip (Neutral) / info */
   --color-blue-100: #f3f7fb;
+  /* Feedback/colour-feedback-info-bg. Stronger than blue-100. */
+  --color-info-bg: #dee6f6;
   --color-blue-200: #d9e6f4;
   --color-blue-600: #0057b8;
   --color-blue-700: #0049a8;
@@ -43,13 +45,22 @@
 
   /* Semantic */
   --color-error-600: #cc1000;
+  --color-error-200: #ffe3e0;
   --color-error-100: #fff6f5;
   --color-warning-800: #c65d00;
+  --color-warning-900: #994400;
   --color-warning-700: #e06a27;
   --color-warning-600: #f2721b;
   --color-warning-200: #fce1b6;
   --color-warning-100: #fef5e7;
+  /* Requirement updates. Warning is orange; these stay yellow. */
+  --color-yellow-800: #6e5600;
+  --color-yellow-500: #f0c400;
+  --color-yellow-200: #f3e08a;
+  --color-yellow-100: #fff6c8;
+  --color-success-800: #026529;
   --color-success-600: #008545;
+  --color-success-200: #daedd9;
   --color-success-100: #f3f9f3;
 
   /* Radius */
@@ -72,6 +83,8 @@
   --breakpoint-tablet: 768px;
   --breakpoint-desktop: 1280px;
   --container-desktop: 1280px;
+  /* TeMPo 1440 key screen: 288 nav + 40 + 1072 + 40 */
+  --container-tempo-desktop: 1072px;
 
   --font-sans: "Lato", sans-serif;
   --shadow-light-bg: 0px 6px 20px rgba(18, 18, 18, 0.08);
@@ -134,7 +147,7 @@
 
   /* Mobile drawer must stay out of the flex row or html-to-design
      captures a 288px sidebar and an 87px-wide page. */
-  @media (max-width: 767px) {
+  @media (max-width: 1279px) {
     html.figma-full #tempo-sidenav {
       display: none !important;
     }
@@ -157,6 +170,12 @@
       font-size: 16px;
       line-height: 20px;
     }
+  }
+
+  /* Sticky Topics pin and the phone header sit above cards; drop them so the sheet scrim can cover them. */
+  html[data-sheet] #process-guide-mobile-pin,
+  html[data-sheet] .app-mobile-bar {
+    z-index: 0 !important;
   }
 
   /* Horizontal page margin is AppShell main padding (same width as the old side rails). */
@@ -204,7 +223,7 @@
     font-family: var(--font-sans);
     font-weight: 900;
     font-size: 24px;
-    line-height: 32px;
+    line-height: 30px;
     color: var(--color-black);
   }
 
@@ -212,7 +231,7 @@
     font-family: var(--font-sans);
     font-weight: 700;
     font-size: 20px;
-    line-height: 28px;
+    line-height: 26px;
     color: var(--color-black);
   }
 
@@ -220,7 +239,7 @@
     font-family: var(--font-sans);
     font-weight: 700;
     font-size: 16px;
-    line-height: 24px;
+    line-height: 20px;
     color: var(--color-black);
   }
 
@@ -261,6 +280,23 @@
   display: none;
 }
 
+/* Overflowing panels: keep the scrollbar on screen so readers can tell there is more. */
+.scroll-visible {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-grey-300) transparent;
+}
+.scroll-visible::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.scroll-visible::-webkit-scrollbar-track {
+  background: transparent;
+}
+.scroll-visible::-webkit-scrollbar-thumb {
+  border-radius: 9999px;
+  background: var(--color-grey-300);
+}
+
 @media (max-width: 767px) {
   .process-chip-scroll {
     -webkit-overflow-scrolling: touch;
@@ -279,9 +315,46 @@
 }
 
 /* Figma _Atoms/Process/Sticky Idle — light fill + 2px gradient stroke */
+/* Process v31 panels and cards cap at radius-xl (12px). */
+.process-v31 article {
+  border-radius: var(--radius-xl);
+}
+.process-v31 article [class*="rounded-b-"] {
+  border-bottom-left-radius: var(--radius-xl);
+  border-bottom-right-radius: var(--radius-xl);
+}
+
 .quiz-sticky-idle {
   border: 2px solid transparent;
   background:
     var(--gradient-quiz-sticky) padding-box,
     var(--gradient-quiz-sticky-border) border-box;
+}
+
+@media print {
+  .app-mobile-bar,
+  #tempo-sidenav,
+  [data-print-hide] {
+    display: none !important;
+  }
+
+  html,
+  body,
+  #root {
+    height: auto !important;
+    overflow: visible !important;
+    background: #fff !important;
+  }
+
+  main {
+    display: block !important;
+    height: auto !important;
+    overflow: visible !important;
+    padding: 0 !important;
+  }
+
+  .dls-page {
+    max-width: none !important;
+    padding: 0 !important;
+  }
 }

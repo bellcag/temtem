@@ -19,34 +19,97 @@ export type QuizScope = "fitout" | "operate";
 export const NONE_ID = "none";
 export const NOT_SURE_ID = "not-sure";
 
-export type QuestionId = "scope" | "fire" | "structure" | "mep" | "external";
+export type QuestionId =
+  | "unit"
+  | "scope"
+  | "fire"
+  | "structure"
+  | "mep"
+  | "external"
+  | "features"
+  | "terminal"
+  | "trade";
+
+export type QuizSection = "unit" | "works" | "features";
 
 export type QuizOption = {
   id: PlannedWorkSlug;
   label: string;
+  hint?: string;
   /** Show only on these terminals. Omit = every terminal. */
   terminals?: Unit["terminal"][];
+  /** Show only on these trades. Omit = every trade. */
+  tenancyTypes?: Unit["tenancyType"][];
 };
 
 export type QuizQuestion = {
   id: QuestionId;
+  section: QuizSection;
   prompt: string;
   options: QuizOption[];
 };
 
+export const QUIZ_SECTION_LABEL: Record<QuizSection, string> = {
+  unit: "About your unit",
+  works: "Planned works",
+  features: "Unit features",
+};
+
+export function quizUnitLine(unit: Unit): string {
+  return `${unit.terminal} · ${unit.zone} · ${unit.tenancyType}`;
+}
+
 export const PLANNED_WORKS_QUESTIONS: QuizQuestion[] = [
   {
+    id: "unit",
+    section: "unit",
+    prompt: "Which of these describe your unit?",
+    options: [
+      {
+        id: "facing-travelling-pax",
+        label: "Shopfront faces travelling passengers",
+      },
+      {
+        id: "closed-door-rooms",
+        label: "Has enclosed, closed-door rooms",
+      },
+      {
+        id: "transit-area",
+        label: "In the airside transit area",
+      },
+      {
+        id: "apron",
+        label: "On the apron or baggage area",
+      },
+      {
+        id: "duplex",
+        label: "Duplex — two storeys inside the unit",
+      },
+      {
+        id: "landside-concessions",
+        label: "Lease handled by Landside Concessions",
+        hint: "Confirm with your Project Officer",
+      },
+    ],
+  },
+  {
     id: "scope",
+    section: "works",
     prompt: "How big is this job?",
     options: [
-      { id: "large-scale-renovation", label: "A full strip-out and rebuild" },
+      {
+        id: "large-scale-renovation",
+        label: "A full strip-out and rebuild, not a minor refresh",
+        hint: "Confirm with your Project Officer",
+      },
       {
         id: "change-of-use",
-        label: "Used for something different than approved",
+        label: "Used for something different than currently approved",
       },
       {
         id: "additional-renovation-scope",
-        label: "Extra works beyond what was already approved",
+        label: "Extra works beyond the base renovation permit",
+        hint: "Confirm with your Project Officer",
       },
       {
         id: "takeover-from-exiting-tenant",
@@ -56,7 +119,8 @@ export const PLANNED_WORKS_QUESTIONS: QuizQuestion[] = [
   },
   {
     id: "fire",
-    prompt: "Will the works involve fire, sparks, alarms, or sprinklers?",
+    section: "works",
+    prompt: "Fire, sparks, alarms, or sprinklers?",
     options: [
       {
         id: "hot-work",
@@ -64,30 +128,38 @@ export const PLANNED_WORKS_QUESTIONS: QuizQuestion[] = [
       },
       {
         id: "fire-alarm-isolation",
-        label: "Work that could set off alarms or sprinklers",
+        label: "Work that could set off — or need isolating — alarms or sprinklers",
       },
       {
         id: "fire-protection-detection-works",
-        label: "Adding or changing fire alarms, sprinklers, or other fire systems",
+        label: "Adding or altering fire protection or detection systems",
       },
       {
         id: "fire-safety-submission",
-        label: "New fit-out, changing fire systems, or occupying in stages",
+        label: "New fit-out, temporary or phased occupation, or QP must confirm FSC vs MAA",
       },
     ],
   },
   {
     id: "structure",
-    prompt: "Will anyone open ceilings, go on the roof, or touch the building structure?",
+    section: "works",
+    prompt: "Ceilings, roof, or structure?",
     options: [
-      { id: "above-ceiling-works", label: "Open / work above ceiling panels" },
+      {
+        id: "above-ceiling-works",
+        label: "Open or work above ceiling panels or access panels",
+      },
       { id: "roof-works", label: "Work on the roof" },
-      { id: "structural-works", label: "Structural walls, or hack / core" },
+      {
+        id: "structural-works",
+        label: "Structural walls, or hack / core into the building",
+      },
     ],
   },
   {
     id: "mep",
-    prompt: "Will you change wiring, air-con, pipes, or work in wet rooms?",
+    section: "works",
+    prompt: "Wiring, air-con, or wet rooms?",
     options: [
       {
         id: "mep-changes",
@@ -96,28 +168,72 @@ export const PLANNED_WORKS_QUESTIONS: QuizQuestion[] = [
       {
         id: "waterproofing-works",
         label: "Wet area that could affect waterproofing",
+        hint: "Usually confirmed at KickOff meeting",
       },
     ],
   },
   {
     id: "external",
-    prompt: "Cables, unusual access, or approvals from outside the airport?",
+    section: "works",
+    prompt: "Cables, access, or outside approval?",
     options: [
-      { id: "structured-cabling", label: "Data or telephone cabling" },
-      { id: "telco-cabling", label: "Phone or internet company cabling" },
+      {
+        id: "structured-cabling",
+        label: "Data or telephone cabling — install, move, or disconnect",
+      },
+      {
+        id: "telco-cabling",
+        label: "Phone or internet company (authorised telco) cabling",
+      },
       {
         id: "catwalk-access",
-        label: "T4 catwalk",
+        label: "Workers need the Terminal 4 catwalk",
         terminals: ["T4"],
       },
       {
         id: "skytrain-work",
-        label: "Skytrain",
+        label: "Work on or within 6 metres of the Skytrain",
         terminals: ["T1", "T2", "T3"],
       },
       {
         id: "authority-approval",
         label: "Approval from a government agency",
+        hint: "Confirm with your Project Officer or Qualified Person",
+      },
+    ],
+  },
+  {
+    id: "features",
+    section: "features",
+    prompt: "Which of these are true for this unit?",
+    options: [
+      {
+        id: "lack-of-perm-meter",
+        label: "No permanent electricity or water meter yet",
+        hint: "Check the provision list or handover form",
+      },
+      {
+        id: "tenant-maintained-ahu",
+        label: "Air handling unit that you maintain",
+        hint: "Check the provision list",
+      },
+      {
+        id: "deep-frying-open-flame",
+        label: "Kitchen uses open-flame cooking or deep-frying",
+        tenancyTypes: ["F&B"],
+      },
+      {
+        id: "gas-supply",
+        label: "Unit will have a gas supply",
+        tenancyTypes: ["F&B"],
+      },
+      {
+        id: "servers-computer-rooms",
+        label: "Contains a server or computer room",
+      },
+      {
+        id: "ceiling-panel-false-ceiling",
+        label: "Has a false ceiling or ceiling panels",
       },
     ],
   },
@@ -129,7 +245,8 @@ export type QuestionAnswer =
   | { kind: "none" }
   | { kind: "selected"; slugs: PlannedWorkSlug[] }
   /** In-card apply: listed slugs on/off, the rest still unknown. */
-  | { kind: "flags"; on: PlannedWorkSlug[]; off: PlannedWorkSlug[] };
+  | { kind: "flags"; on: PlannedWorkSlug[]; off: PlannedWorkSlug[] }
+  | { kind: "choice"; value: string };
 
 export type QuizStatus = "idle" | "editing" | "paused" | "done";
 
@@ -143,11 +260,15 @@ export type QuizState = {
 const UNANSWERED: QuestionAnswer = { kind: "unanswered" };
 
 export const EMPTY_ANSWERS: Record<QuestionId, QuestionAnswer> = {
+  unit: UNANSWERED,
   scope: UNANSWERED,
   fire: UNANSWERED,
   structure: UNANSWERED,
   mep: UNANSWERED,
   external: UNANSWERED,
+  features: UNANSWERED,
+  terminal: UNANSWERED,
+  trade: UNANSWERED,
 };
 
 export const EMPTY_QUIZ: QuizState = {
@@ -158,10 +279,16 @@ export const EMPTY_QUIZ: QuizState = {
 
 export type SlugFlag = "on" | "off" | "unknown";
 
+export function optionVisibleForUnit(opt: QuizOption, unit: Unit): boolean {
+  if (opt.terminals && !opt.terminals.includes(unit.terminal)) return false;
+  if (opt.tenancyTypes && !opt.tenancyTypes.includes(unit.tenancyType)) {
+    return false;
+  }
+  return true;
+}
+
 export function optionsForUnit(question: QuizQuestion, unit: Unit): QuizOption[] {
-  return question.options.filter(
-    (opt) => !opt.terminals || opt.terminals.includes(unit.terminal),
-  );
+  return question.options.filter((opt) => optionVisibleForUnit(opt, unit));
 }
 
 export function questionsForUnit(unit: Unit): QuizQuestion[] {
@@ -177,6 +304,11 @@ export function slugFlags(
   unit: Unit,
 ): Record<PlannedWorkSlug, SlugFlag> {
   const flags = {} as Record<PlannedWorkSlug, SlugFlag>;
+  for (const question of PLANNED_WORKS_QUESTIONS) {
+    for (const opt of question.options) {
+      if (!optionVisibleForUnit(opt, unit)) flags[opt.id] = "off";
+    }
+  }
   for (const question of questionsForUnit(unit)) {
     const answer = state.answers[question.id] ?? UNANSWERED;
     const visible = question.options.map((o) => o.id);
@@ -196,6 +328,10 @@ export function slugFlags(
         else if (off.has(slug)) flags[slug] = "off";
         else flags[slug] = "unknown";
       }
+      continue;
+    }
+    if (answer.kind === "choice") {
+      for (const slug of visible) flags[slug] = "unknown";
       continue;
     }
     const on = new Set(answer.slugs);
@@ -239,7 +375,10 @@ export function stepCertainty(
 }
 
 export function quizHasUnanswered(state: QuizState): boolean {
-  return Object.values(state.answers).some((answer) => answer.kind === "unanswered");
+  return PLANNED_WORKS_QUESTIONS.some((question) => {
+    const answer = state.answers[question.id];
+    return !answer || answer.kind === "unanswered";
+  });
 }
 
 export function quizHasSavedAnswers(state: QuizState): boolean {
@@ -410,6 +549,8 @@ export function extraPermitsForSlug(
       return ["Authority approvals permit"];
     case "mep-changes":
       return ["MEP changes permit"];
+    case "structural-works":
+      return ["BIM model"];
     case "structured-cabling":
       return unit.terminal === "T3"
         ? ["T3 telephone cabling", "Indoor outdoor cabling"]
@@ -527,6 +668,7 @@ export function questionHasAnswer(
 ): boolean {
   if (!answer || answer.kind === "unanswered") return false;
   if (answer.kind === "none" || answer.kind === "not-sure") return true;
+  if (answer.kind === "choice") return Boolean(answer.value);
   if (answer.kind === "selected") return answer.slugs.length > 0;
   return answer.on.length > 0;
 }
@@ -560,11 +702,15 @@ export type QuizReviewRow = {
 
 /** Scan labels for on-site results. Form still uses `prompt`. */
 export const REVIEW_TOPIC: Record<QuestionId, string> = {
+  unit: "About the unit",
   scope: "Job size",
   fire: "Fire and alarms",
   structure: "Ceiling, roof, structure",
   mep: "Wiring, pipes, wet rooms",
   external: "Cables and access",
+  features: "Unit features",
+  terminal: "Terminal",
+  trade: "Business type",
 };
 
 function permitsForAnswer(
@@ -708,6 +854,32 @@ export function quizStickyCopy(
   const copy = quizUiCopy(scope);
   const progress = quizProgress(state, unit);
   const count = `${progress.answered} of ${progress.total}`;
+  if (quizIsConfirmed(state)) {
+    return {
+      title: copy.stickyConfirmedTitle,
+      subtitle:
+        role === "tenant"
+          ? copy.stickyConfirmedSubTenant
+          : role === "contractor"
+            ? copy.stickyConfirmedSubContractor
+            : copy.stickyConfirmedSubOfficer,
+      cta:
+        role === "officer" ? copy.officerUpdateCta : copy.stickyConfirmedCta,
+      tone: "quiet",
+      tip: copy.officerLockSuccessBody,
+      track:
+        scope === "operate"
+          ? [
+              { label: "Works", state: "done" },
+              { label: "Permit", state: "next" },
+            ]
+          : [
+              { label: "Works", state: "done" },
+              { label: "Briefing", state: "done" },
+              { label: "Permit", state: "next" },
+            ],
+    };
+  }
   if (role === "officer" && !quizHasSavedAnswers(state)) {
     return {
       title: copy.stickyIdleTitle,
@@ -793,31 +965,34 @@ export function quizStickyCopy(
   };
 }
 
-/** Contractor saved two of five — tenant / contractor / officer landing at halfway. */
+/** Contractor saved two groups — tenant / contractor / officer landing at halfway. */
 export function midwayDemoQuiz(): QuizState {
   return {
     status: "paused",
     confirmed: false,
     answers: completeAnswers({
       ...EMPTY_ANSWERS,
+      unit: { kind: "selected", slugs: ["facing-travelling-pax"] },
       scope: { kind: "selected", slugs: ["large-scale-renovation"] },
       fire: { kind: "none" },
     }),
   };
 }
 
-/** Contractor saved all five — landing after Planned works is complete, not yet locked. */
+/** Contractor saved every group — landing after the checklist is complete, not yet locked. */
 export function filledDemoQuiz(): QuizState {
   return {
     status: "done",
     confirmed: false,
     answers: completeAnswers({
       ...EMPTY_ANSWERS,
+      unit: { kind: "selected", slugs: ["facing-travelling-pax"] },
       scope: { kind: "selected", slugs: ["large-scale-renovation"] },
       fire: { kind: "none" },
       structure: { kind: "selected", slugs: ["above-ceiling-works"] },
       mep: { kind: "selected", slugs: ["mep-changes"] },
       external: { kind: "none" },
+      features: { kind: "none" },
     }),
   };
 }
@@ -868,7 +1043,9 @@ export function answerSummaryLines(
 export type QuizEditMode = "fill" | "correct" | "read";
 
 export function quizEditMode(role: Role, state?: QuizState): QuizEditMode {
-  if (role === "contractor") return "fill";
+  if (role === "contractor") {
+    return state && quizIsConfirmed(state) ? "read" : "fill";
+  }
   if (role === "officer") {
     if (state && !quizHasSavedAnswers(state) && !quizIsConfirmed(state)) {
       return "fill";
@@ -896,8 +1073,11 @@ export function quizCardCopy(
   if (mode === "read") {
     if (hasAnswers && confirmed) {
       return {
-        subheader: quizCopy.tenantDoneIntro,
-        how: quizCopy.tenantDoneHow,
+        subheader:
+          role === "contractor"
+            ? [quizCopy.contractorLockedLine]
+            : quizCopy.tenantDoneIntro,
+        how: role === "contractor" ? [] : quizCopy.tenantDoneHow,
       };
     }
     if (hasAnswers) {
@@ -944,18 +1124,18 @@ export function makeQuizClassifiedStep(role: Role): ClassifiedStep {
   const step: Step = {
     name: QUIZ_STEP_NAME,
     responsible: "You",
-    what: "The contractor answers five questions about the works. This does not submit a permit.",
+    what: "The contractor ticks the unit, works, and features that apply. This does not submit a permit.",
     whatFor: {
       tenant:
-        "Your contractor answers five questions about the works. You do not fill this.",
+        "Your contractor ticks what applies on this job. You do not fill this.",
       contractor:
-        "Answer five questions about this job. Select all that apply. This does not submit a permit.",
+        "Tick the unit, works, and features that apply. This does not submit a permit.",
       officer:
-        "Answer five questions about this job, or correct the contractor. This does not submit a permit.",
+        "Tick what applies on this job, or correct the contractor. This does not submit a permit.",
     },
     subSteps: [
       {
-        text: "Answer five questions about this job. Select all that apply.",
+        text: "Tick the unit, works, and features that apply.",
         audience: "contractor",
         seq: "sequential",
         alsoText: {
@@ -997,11 +1177,15 @@ export function operateQuizStorageKey(unitId: string) {
 
 function isQuestionId(value: string): value is QuestionId {
   return (
+    value === "unit" ||
     value === "scope" ||
     value === "fire" ||
     value === "structure" ||
     value === "mep" ||
-    value === "external"
+    value === "external" ||
+    value === "features" ||
+    value === "terminal" ||
+    value === "trade"
   );
 }
 
@@ -1024,6 +1208,12 @@ function parseAnswer(raw: unknown): QuestionAnswer {
       on: Array.isArray(on) ? on.filter((s) => typeof s === "string") : [],
       off: Array.isArray(off) ? off.filter((s) => typeof s === "string") : [],
     };
+  }
+  if (kind === "choice") {
+    const value = (raw as { value?: unknown }).value;
+    return typeof value === "string" && value
+      ? { kind: "choice", value }
+      : UNANSWERED;
   }
   return UNANSWERED;
 }
@@ -1083,7 +1273,7 @@ export function writeOperateQuizState(unitId: string, state: QuizState) {
 
 export const quizCopy = {
   entrySubheader: [
-    "Answer five questions about this job.",
+    "Tick what applies on this unit and job.",
     "Do this before you go on site.",
   ],
   entryHow: [
@@ -1122,7 +1312,7 @@ export const quizCopy = {
     "Get planned works from your contractor.",
   ],
   tenantIdleSoonTitle: "Planned works",
-  tenantIdleHint: "Your contractor answers five questions before the IFM briefing.",
+  tenantIdleHint: "Your contractor ticks what applies before the IFM briefing.",
   tenantIdleSoonHint: "Ask your contractor before the IFM briefing.",
   tenantWaitingHow: [],
   tenantFilledLine: "Read the works noted from your contractor.",
@@ -1140,7 +1330,7 @@ export const quizCopy = {
   ],
   officerWaitingHow: [],
   officerFillSubheader: [
-    "Answer five questions about this job. Select all that apply.",
+    "Tick the unit, works, and features that apply.",
   ],
   officerFillHow: [],
   officerEditingHow: [
@@ -1209,6 +1399,14 @@ export const quizCopy = {
   officerLockSuccessTitle: "Answers confirmed.",
   officerLockSuccessBody:
     "The Application Screener uses these to build the permit checklist.",
+  stickyConfirmedTitle: "Answers confirmed",
+  stickyConfirmedCta: "View answers",
+  stickyConfirmedSubTenant: "Read the works agreed at the IFM briefing.",
+  stickyConfirmedSubContractor: "Use the permits agreed at the IFM briefing.",
+  stickyConfirmedSubOfficer:
+    "The Application Screener uses these to build the permit checklist.",
+  sheetLockedSub: "These answers are locked for this unit.",
+  sheetDoneCta: "Done",
   officerEditCta: "Edit answers",
   officerUpdateCta: "Update answers",
   officerEditGateTitle: "Edits change the Application Screener",
@@ -1285,7 +1483,7 @@ export const quizCopy = {
 
 const OPERATE_QUIZ_COPY: Partial<typeof quizCopy> = {
   entrySubheader: [
-    "Answer five questions about these works.",
+    "Tick what applies on these works.",
     "Only if you need to change the unit after opening.",
   ],
   entryHow: ["Tick what applies on these works."],
@@ -1301,7 +1499,7 @@ const OPERATE_QUIZ_COPY: Partial<typeof quizCopy> = {
     "Get answers from your contractor if you need works after opening.",
   ],
   tenantIdleHint:
-    "Your contractor answers five questions if you need works after opening.",
+    "Your contractor ticks what applies if you need works after opening.",
   tenantIdleSoonHint: "Ask your contractor if you need works after opening.",
   tenantFilledHow: [],
   tenantDoneIntro: ["Read the works agreed for this job."],

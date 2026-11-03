@@ -1,5 +1,11 @@
-import { useMemo, useRef, useState, type ReactNode } from "react";
-import { Link, NavLink } from "react-router-dom";
+import { useEffect, useMemo, useRef, useState, type ReactNode } from "react";
+import {
+  Link,
+  Navigate,
+  NavLink,
+  useNavigate,
+  useSearchParams,
+} from "react-router-dom";
 import { useApp, type Role } from "@/lib/app-state";
 import { UNITS, type Unit } from "@/lib/tenancy-data";
 import { cn } from "@/lib/utils";
@@ -25,18 +31,59 @@ import {
   removeScreenerDoc,
   screenerCopy,
   screenerIntro,
-  screenerPackForJob,
+  screenerPackFor,
+  screenerPackFromNames,
   screenerWaiting,
-  useLiveLockedWorksJob,
+  useLiveLockedQuiz,
   useScreenerAttachments,
   type ScreenerAttachment,
   type ScreenerPermit,
 } from "@/lib/process-screener";
-import { WORKS_HREF } from "@/lib/process-works-jobs";
+import { EMPTY_QUIZ } from "@/lib/process-planned-works-quiz";
+import {
+  markV26Preview,
+  readV26Preview,
+  V26_WORKS_HREF,
+  worksV26Href,
+} from "@/lib/process-v26-preview";
+import {
+  readV26Works,
+  seedV26Works,
+  v26DraftOutcome,
+  v26ScreenerFallbackHref,
+  v26WorkListTitle,
+} from "@/lib/process-v26-works";
+import caretDown from "@/assets/figma/caret-down.svg";
+
+const WORK_BACK =
+  "inline-flex w-fit items-center gap-1 text-sm leading-[18px] font-bold text-purple-600 hover:text-purple-700 focus-visible:outline-none focus-visible:shadow-[0_0_0_2px_var(--color-purple-600)]";
+const PROCESS_SETUP_HREF = "/process?phase=setup";
 
 function progressLabel(attached: number, required: number) {
   if (required === 0) return "No required documents";
   return `${attached} of ${required} required`;
+}
+
+function WorkBackLink({ to, children }: { to: string; children: string }) {
+  return (
+    <Link to={to} className={WORK_BACK}>
+      <span
+        aria-hidden
+        className="block size-4 bg-current"
+        style={{
+          WebkitMaskImage: `url("${caretDown}")`,
+          maskImage: `url("${caretDown}")`,
+          WebkitMaskSize: "10px 6px",
+          maskSize: "10px 6px",
+          WebkitMaskRepeat: "no-repeat",
+          maskRepeat: "no-repeat",
+          WebkitMaskPosition: "center",
+          transform: "rotate(90deg)",
+        }}
+      />
+      {children}
+    </Link>
+  );
 }
 
 function ScreenerTabs({ current }: { current: "drafts" | "history" }) {
@@ -374,78 +421,170 @@ function ScreenerShell({
   );
 }
 
+function V26ScreenerShell({
+  workTitle,
+  unitNo,
+  workBack,
+  children,
+}: {
+  workTitle: string;
+  unitNo: string;
+  workBack: string;
+  children: ReactNode;
+}) {
+  return (
+    <div className="dls-page flex max-w-xl flex-col gap-6 !pt-5 tablet:!pt-8">
+      <header className="flex flex-col gap-3">
+        <WorkBackLink to={workBack}>Back to this work</WorkBackLink>
+        <div className="flex flex-col gap-2">
+          <p className="text-xs leading-4 font-bold uppercase tracking-[0.08em] text-grey-400">
+            Works
+          </p>
+          <h1 className="text-[28px] leading-9 font-bold text-black">
+            Permit application
+          </h1>
+          <p className="text-sm leading-[18px] text-grey-500">
+            {workTitle} · {unitNo} · Attach files, then apply in OneCalendar
+          </p>
+        </div>
+      </header>
+      {children}
+    </div>
+  );
+}
+
 export function ScreenerDraftsPage() {
   const ctx = useScreenerContext();
-  const job = useLiveLockedWorksJob(ctx.ctxUnit.id);
+  const [params] = useSearchParams();
+  const navigate = useNavigate();
+  const v26WorkId = params.get("work");
+  const v26Preview =
+    params.get("from") === "v26" || readV26Preview();
+
+  useEffect(() => {
+    if (params.get("from") === "v26") markV26Preview();
+    if (!v26Preview || v26WorkId) return;
+    navigate(v26ScreenerFallbackHref(ctx.ctxUnit.id), { replace: true });
+  }, [v26Preview, v26WorkId, ctx.ctxUnit.id, navigate, params]);
+
+  const quiz = useLiveLockedQuiz(ctx.ctxUnit.id);
   const attachments = useScreenerAttachments(ctx.ctxUnit.id);
+  const v26Pack = useMemo(() => {
+    if (!v26Preview || !v26WorkId) return null;
+    seedV26Works(ctx.ctxUnit.id);
+    const work = readV26Works(ctx.ctxUnit.id).find((row) => row.id === v26WorkId);
+    if (!work) return null;
+    const outcome = v26DraftOutcome(work, ctx.role, ctx.ctxUnit);
+    return {
+      work,
+      pack: screenerPackFromNames(outcome.permits, attachments),
+    };
+  }, [v26Preview, v26WorkId, ctx.ctxUnit, ctx.role, attachments]);
   const pack = useMemo(
-    () => screenerPackForJob(job, ctx.ctxUnit, attachments),
-    [job, ctx.ctxUnit, attachments],
+    () =>
+      v26Pack?.pack ??
+      screenerPackFor(quiz ?? EMPTY_QUIZ, ctx.ctxUnit, attachments),
+    [v26Pack, quiz, ctx.ctxUnit, attachments],
   );
-  const locked = pack.locked && ctx.appointed && !ctx.needsContext;
+  const locked = v26Pack
+    ? pack.permits.length > 0 && !ctx.needsContext
+    : pack.locked && ctx.appointed && !ctx.needsContext;
+  const workBack = v26WorkId ? worksV26Href({ work: v26WorkId }) : null;
+
+  if (v26Preview && !v26WorkId) return null;
+
+  const packBody = ctx.needsContext ? (
+    <section className="rounded-[var(--radius-2xl)] border border-grey-100 bg-white p-5 shadow-[var(--shadow-light-bg)]">
+      <p className="text-sm leading-[18px] text-grey-700">
+        {screenerCopy.unscoped}
+      </p>
+      <div className="mt-4">
+        <GhostLink to={PROCESS_SETUP_HREF}>{screenerCopy.waitingCta}</GhostLink>
+      </div>
+    </section>
+  ) : !locked ? (
+    <section className="rounded-[var(--radius-2xl)] border border-grey-100 bg-white p-5 shadow-[var(--shadow-light-bg)]">
+      <p className="text-sm leading-[18px] font-bold text-black">
+        {v26Pack ? v26WorkListTitle(v26Pack.work) : unitJobLabel(ctx.ctxUnit)}
+      </p>
+      <p className="mt-2 text-sm leading-[18px] text-grey-700">
+        {workBack
+          ? "Tick what this work involves first, then come back to attach files."
+          : !ctx.appointed
+            ? "This job is not appointed yet."
+            : screenerWaiting(ctx.role)}
+      </p>
+      {!v26Pack ? (
+        <div className="mt-4">
+          <GhostLink to={PROCESS_SETUP_HREF}>{screenerCopy.waitingCta}</GhostLink>
+        </div>
+      ) : null}
+    </section>
+  ) : (
+    <div className="flex flex-col gap-4">
+      <section className="rounded-[var(--radius-2xl)] border border-grey-100 bg-white p-5 shadow-[var(--shadow-light-bg)]">
+        <p className="text-sm leading-[18px] font-bold text-black">
+          {v26Pack
+            ? `Documents for ${v26WorkListTitle(v26Pack.work)}`
+            : `Locked pack · ${unitJobLabel(ctx.ctxUnit)}`}
+        </p>
+        <p className="mt-1 text-xs leading-4 text-grey-500">
+          {progressLabel(pack.attachedRequired, pack.requiredCount)}
+        </p>
+        <p className="mt-3 text-sm leading-[18px] text-grey-700">
+          {v26Pack
+            ? "Upload supporting files for this work, then submit through OneCalendar."
+            : screenerCopy.lockedNote}
+        </p>
+      </section>
+      {pack.permits.map((permit, index) => (
+        <PermitCard
+          key={permit.name}
+          role={ctx.role}
+          unitId={ctx.ctxUnit.id}
+          permit={permit}
+          attachments={attachments}
+          defaultOpen={index === 0}
+        />
+      ))}
+    </div>
+  );
+
+  if (v26Pack && workBack) {
+    return (
+      <V26ScreenerShell
+        workTitle={v26WorkListTitle(v26Pack.work)}
+        unitNo={ctx.ctxUnit.unitNo}
+        workBack={workBack}
+      >
+        {packBody}
+      </V26ScreenerShell>
+    );
+  }
 
   return (
     <ScreenerShell current="drafts" ctx={ctx}>
-      {ctx.needsContext ? (
-        <section className="rounded-[var(--radius-2xl)] border border-grey-100 bg-white p-5 shadow-[var(--shadow-light-bg)]">
-          <p className="text-sm leading-[18px] text-grey-700">
-            {screenerCopy.unscoped}
-          </p>
-          <div className="mt-4">
-            <GhostLink to={WORKS_HREF}>{screenerCopy.waitingCta}</GhostLink>
-          </div>
-        </section>
-      ) : !locked ? (
-        <section className="rounded-[var(--radius-2xl)] border border-grey-100 bg-white p-5 shadow-[var(--shadow-light-bg)]">
-          <p className="text-sm leading-[18px] font-bold text-black">
-            {unitJobLabel(ctx.ctxUnit)}
-          </p>
-          <p className="mt-2 text-sm leading-[18px] text-grey-700">
-            {!ctx.appointed
-              ? "This job is not appointed yet."
-              : screenerWaiting(ctx.role)}
-          </p>
-          <div className="mt-4">
-            <GhostLink to={WORKS_HREF}>{screenerCopy.waitingCta}</GhostLink>
-          </div>
-        </section>
-      ) : (
-        <div className="flex flex-col gap-4">
-          <section className="rounded-[var(--radius-2xl)] border border-grey-100 bg-white p-5 shadow-[var(--shadow-light-bg)]">
-            <p className="text-sm leading-[18px] font-bold text-black">
-              Locked on Works · {unitJobLabel(ctx.ctxUnit)}
-            </p>
-            <p className="mt-1 text-xs leading-4 text-grey-500">
-              {progressLabel(pack.attachedRequired, pack.requiredCount)}
-            </p>
-            <p className="mt-3 text-sm leading-[18px] text-grey-700">
-              {screenerCopy.lockedNote}
-            </p>
-          </section>
-          {pack.permits.map((permit, index) => (
-            <PermitCard
-              key={permit.name}
-              role={ctx.role}
-              unitId={ctx.ctxUnit.id}
-              permit={permit}
-              attachments={attachments}
-              defaultOpen={index === 0}
-            />
-          ))}
+      {workBack ? (
+        <div className="mb-2">
+          <GhostLink to={workBack}>Back to this work</GhostLink>
         </div>
-      )}
+      ) : null}
+      {packBody}
     </ScreenerShell>
   );
 }
 
 export function ScreenerHistoryPage() {
   const ctx = useScreenerContext();
-  const job = useLiveLockedWorksJob(ctx.ctxUnit.id);
+  const quiz = useLiveLockedQuiz(ctx.ctxUnit.id);
   const attachments = useScreenerAttachments(ctx.ctxUnit.id);
   const pack = useMemo(
-    () => screenerPackForJob(job, ctx.ctxUnit, attachments),
-    [job, ctx.ctxUnit, attachments],
+    () => screenerPackFor(quiz ?? EMPTY_QUIZ, ctx.ctxUnit, attachments),
+    [quiz, ctx.ctxUnit, attachments],
   );
+  if (readV26Preview()) {
+    return <Navigate to={V26_WORKS_HREF} replace />;
+  }
   const showRow = pack.locked && ctx.appointed && !ctx.needsContext;
 
   return (

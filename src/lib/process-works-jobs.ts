@@ -18,6 +18,27 @@ import {
 } from "@/lib/process-planned-works-quiz";
 
 export const WORKS_HREF = "/works";
+export const WORKS_TOOL_HREF = "/works?tool=1&from=v25";
+
+/** One shared quiz for the unit. Not a job gate. */
+export function ensureToolQuiz(unitId: string): WorksJob {
+  const jobs = readWorksJobs(unitId);
+  const existing =
+    jobs.find((job) => job.kind === "opening") ?? jobs[0] ?? null;
+  if (existing) return existing;
+  const created = startWorksJob(unitId, "opening");
+  if (created) return created;
+  const fallback: WorksJob = {
+    id: `tool-${unitId}`,
+    unitId,
+    kind: "opening",
+    title: "Planned works",
+    createdAt: new Date().toISOString(),
+    quiz: emptyQuiz(),
+  };
+  upsertWorksJob(unitId, fallback);
+  return fallback;
+}
 
 export type WorksJobKind = "opening" | "operate" | "exit";
 
@@ -112,6 +133,82 @@ function clearWorksDemoStorage(unitId: string) {
   window.localStorage.removeItem(operateQuizStorageKey(unitId));
   window.localStorage.removeItem(`tempo:v19:screener-pack:${unitId}`);
   window.dispatchEvent(new CustomEvent(QUIZ_CHANGED_EVENT, { detail: { unitId } }));
+}
+
+function storyQuiz(
+  slugs: PlannedWorkSlug[],
+  confirmed: boolean,
+): QuizState {
+  return {
+    status: confirmed ? "done" : "editing",
+    confirmed,
+    answers: {
+      scope: { kind: "selected", slugs },
+      fire: { kind: "none" },
+      structure: { kind: "none" },
+      mep: { kind: "none" },
+      external: { kind: "none" },
+    },
+  };
+}
+
+const V25_UNLOCK_OPENING_KEY = (unitId: string) =>
+  `tempo:v25:unlock-opening:${unitId}`;
+
+/** v25 preview only: opening stays editable until the officer locks it. */
+export function seedV25OpeningDoneThreeOperate(unitId: string) {
+  const existing = readWorksJobs(unitId);
+  const unlockKey = V25_UNLOCK_OPENING_KEY(unitId);
+  if (!window.localStorage.getItem(unlockKey)) {
+    const opening = existing.find(
+      (job) => job.id === `opening-${unitId}-v25-story`,
+    );
+    if (opening?.quiz.confirmed) {
+      upsertWorksJob(unitId, {
+        ...opening,
+        quiz: { ...opening.quiz, confirmed: false, status: "paused" },
+      });
+    }
+    window.localStorage.setItem(unlockKey, "1");
+  }
+  if (readWorksJobs(unitId).length > 0) return;
+
+  window.localStorage.setItem(WORKS_DEMO_STORY_KEY, "first-fitout");
+  window.localStorage.removeItem(bypassKey(unitId));
+  writeWorksJobs(unitId, [
+    {
+      id: `opening-${unitId}-v25-story`,
+      unitId,
+      kind: "opening",
+      title: "Opening fit-out",
+      createdAt: "2026-02-10T09:00:00.000Z",
+      quiz: storyQuiz(["large-scale-renovation"], false),
+    },
+    {
+      id: `operate-${unitId}-v25-1`,
+      unitId,
+      kind: "operate",
+      title: "Renovation 1",
+      createdAt: "2026-03-12T09:00:00.000Z",
+      quiz: storyQuiz(["hot-work"], true),
+    },
+    {
+      id: `operate-${unitId}-v25-2`,
+      unitId,
+      kind: "operate",
+      title: "Renovation 2",
+      createdAt: "2026-06-08T09:00:00.000Z",
+      quiz: storyQuiz(["waterproofing-works"], true),
+    },
+    {
+      id: `operate-${unitId}-v25-3`,
+      unitId,
+      kind: "operate",
+      title: "Renovation 3",
+      createdAt: "2026-09-03T09:00:00.000Z",
+      quiz: storyQuiz(["above-ceiling-works"], false),
+    },
+  ]);
 }
 
 export function applyWorksDemoStory(unitId: string, story: WorksDemoStory) {
@@ -316,15 +413,27 @@ const STEP_FOR_SLUG: Partial<Record<PlannedWorkSlug, string>> = {
   "takeover-from-exiting-tenant": "Qualified Person letter",
   "waterproofing-works": "Waterproofing and ponding",
   "fire-protection-detection-works": "FSSD notice of approval",
+  "facing-travelling-pax": "Staff systems",
+  "landside-concessions": "WebEpic account",
+  "lack-of-perm-meter": "Temporary power",
+  "ceiling-panel-false-ceiling": "Ceiling inspection",
+  "closed-door-rooms": "Public announcement test",
+  "deep-frying-open-flame": "Kitchen fire suppression",
+  "gas-supply": "Gas leak test",
+  "servers-computer-rooms": "Total gas flooding",
+  "tenant-maintained-ahu": "AHU servicing",
+  "transit-area": "T4 transit security",
 };
 
 function extraStepsForSlug(
   slug: PlannedWorkSlug,
   kind: WorksJobKind,
+  unit: Unit,
 ): string[] {
   if (kind !== "opening" && slug === "change-of-use") return [];
   if (kind !== "opening" && slug === "large-scale-renovation") return [];
   if (kind !== "opening" && slug === "takeover-from-exiting-tenant") return [];
+  if (slug === "transit-area" && unit.terminal !== "T4") return [];
   if (kind === "exit" && slug === "structured-cabling") {
     return ["Structured cabling disconnection"];
   }
@@ -394,6 +503,56 @@ const STEP_LEAD: Record<string, Record<Role, string>> = {
     contractor: "Disconnect structured cabling before handover.",
     officer: "Check structured cabling is disconnected before handover.",
   },
+  "Staff systems": {
+    tenant: "Register front-of-house staff for Quality Service Management.",
+    contractor: "Staff registration sits with the tenant.",
+    officer: "Register front-of-house staff for Quality Service Management.",
+  },
+  "WebEpic account": {
+    tenant: "Apply for the WebEpic account when Landside Concessions uses it.",
+    contractor: "WebEpic sits with the tenant and Project Officer.",
+    officer: "Remind the tenant about WebEpic.",
+  },
+  "Temporary power": {
+    tenant: "Temporary power is requested if the unit has no permanent meter.",
+    contractor: "Request temporary power from IFM if there is no permanent meter.",
+    officer: "Check temporary power if the unit has no permanent meter.",
+  },
+  "Ceiling inspection": {
+    tenant: "IFM and AES sign off ceiling panels that were opened.",
+    contractor: "Walk the ceiling inspection with IFM and AES.",
+    officer: "Check the ceiling inspection sign-off.",
+  },
+  "Public announcement test": {
+    tenant: "IFM witnesses the public announcement test in closed-door rooms.",
+    contractor: "Walk the public announcement test with IFM.",
+    officer: "Check the public announcement test.",
+  },
+  "Kitchen fire suppression": {
+    tenant: "AES checks the kitchen fire system for open flame or deep-frying.",
+    contractor: "Walk the kitchen fire suppression test with AES.",
+    officer: "Check the kitchen fire suppression test.",
+  },
+  "Gas leak test": {
+    tenant: "AES checks the gas leak test.",
+    contractor: "Walk the gas leak test with AES.",
+    officer: "Check the gas leak test.",
+  },
+  "Total gas flooding": {
+    tenant: "AES checks the Total Gas Flooding System in the server room.",
+    contractor: "Walk the Total Gas Flooding System test with AES.",
+    officer: "Check the Total Gas Flooding System test.",
+  },
+  "AHU servicing": {
+    tenant: "Submit the air handling unit servicing report in TOPAZ.",
+    contractor: "AHU servicing reports are the tenant’s to lodge.",
+    officer: "Check the AHU servicing report.",
+  },
+  "T4 transit security": {
+    tenant: "Follow T4 transit security rules for this job.",
+    contractor: "Follow T4 transit security rules for this job.",
+    officer: "Check T4 transit security on this job.",
+  },
 };
 
 function optionLabelForSlug(
@@ -439,7 +598,7 @@ export function worksOutcome(
       extras.push(name);
     }
     const because = optionLabelForSlug(unit, job.kind, planned);
-    for (const name of extraStepsForSlug(planned, job.kind)) {
+    for (const name of extraStepsForSlug(planned, job.kind, unit)) {
       const existing = stepMap.get(name);
       if (existing) {
         if (!existing.because.includes(because)) existing.because.push(because);

@@ -120,7 +120,7 @@ export function AppStateProvider({ children }: { children: ReactNode }) {
     } catch {
       /* ignore */
     }
-    return "contractor";
+    return "tenant";
   });
   const [signedIn, setSignedIn] = useState(() => {
     try {

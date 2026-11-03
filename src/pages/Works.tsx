@@ -4,21 +4,28 @@ import { useApp } from "@/lib/app-state";
 import { CONTRACTOR_JOBS, LS_JOB } from "@/lib/process-job-context";
 import {
   completeAnswers,
-  isOptionOn,
-  NONE_ID,
-  NOT_SURE_ID,
+  quizHasSavedAnswers,
+  quizIsConfirmed,
   quizProgress,
   settleQuizWrite,
   toggleQuestionOption,
-  type QuestionId,
   type QuizState,
 } from "@/lib/process-planned-works-quiz";
+import {
+  setV25Check,
+  setV25Choice,
+  setV25YesNo,
+  v25QuizProgress,
+} from "@/lib/process-v25-quiz";
+import { QuizQuestionBlock } from "@/components/dls/QuizChecklist";
+import { QuizChecklistV25 } from "@/components/dls/QuizChecklistV25";
 import {
   applyWorksDemoStory,
   canFillWorksJob,
   canLockWorksJob,
   canStartWorksJob,
   ensureOpeningJob,
+  ensureToolQuiz,
   jobStatusLabel,
   liveWorksKind,
   lockWorksJob,
@@ -36,13 +43,12 @@ import {
 } from "@/lib/process-works-jobs";
 import { WorksLockedOutcome } from "@/components/WorksLockedOutcome";
 import type { Unit } from "@/lib/tenancy-data";
-import { cn } from "@/lib/utils";
 import caretDown from "@/assets/figma/caret-down.svg";
 
 const PROCESS_FOR_KIND: Record<WorksJobKind, string> = {
-  opening: "/process-v24?phase=build",
-  operate: "/process-v24?phase=operate",
-  exit: "/process-v24?phase=exit",
+  opening: "/process?phase=build",
+  operate: "/process?phase=operate",
+  exit: "/process?phase=exit",
 };
 
 const TERTIARY_BACK =
@@ -79,59 +85,6 @@ function persistJob(unit: Unit, job: WorksJob, nextQuiz: QuizState) {
   return next;
 }
 
-function CheckRow({
-  label,
-  on,
-  exclusive,
-  disabled,
-  onToggle,
-}: {
-  label: string;
-  on: boolean;
-  exclusive?: boolean;
-  disabled?: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <button
-      type="button"
-      role="checkbox"
-      aria-checked={on}
-      disabled={disabled}
-      onClick={onToggle}
-      className={cn(
-        "flex w-full items-center gap-3 px-3 py-4 text-left",
-        "border-t border-grey-100 first:border-t-0",
-        disabled ? "cursor-default" : "cursor-pointer",
-        on && "bg-purple-100",
-        exclusive && "bg-grey-25",
-        exclusive && on && "bg-purple-100",
-      )}
-    >
-      <span
-        className={cn(
-          "grid size-4 shrink-0 aspect-square place-items-center rounded-[var(--radius-sm)] border",
-          on ? "border-purple-600 bg-purple-600" : "border-grey-300 bg-white",
-        )}
-        aria-hidden
-      >
-        {on && (
-          <span className="block h-1.5 w-2.5 -translate-y-px rotate-[-45deg] border-b-2 border-l-2 border-white" />
-        )}
-      </span>
-      <span
-        className={cn(
-          "min-w-0 flex-1 text-sm leading-[18px] font-bold",
-          exclusive ? "text-grey-700" : "text-black",
-          disabled && "text-grey-500",
-        )}
-      >
-        {label}
-      </span>
-    </button>
-  );
-}
-
 export function WorksPage() {
   const { role, unit, effectiveUnit } = useApp();
   const [params, setParams] = useSearchParams();
@@ -161,8 +114,15 @@ export function WorksPage() {
   }, [isContractor, isOfficer, jobId, effectiveUnit, unit]);
 
   const selectedId = params.get("job");
+  const toolMode = params.get("tool") === "1";
+  const fromV25 = params.get("from") === "v25";
+  const toolPhase =
+    params.get("phase") === "operate" ? "operate" : "build";
   const kind = liveWorksKind(ctxUnit.id, jobs);
   const openingSkip = readOpeningBypass(ctxUnit.id);
+  const processBack = fromV25
+    ? `/process-v25?phase=${toolPhase}`
+    : PROCESS_FOR_KIND[kind];
 
   useEffect(() => {
     if (!readWorksDemoStory()) {
@@ -186,6 +146,29 @@ export function WorksPage() {
     setJobs(readWorksJobs(ctxUnit.id));
   }, [role, kind, ctxUnit.id]);
 
+  useEffect(() => {
+    if (!toolMode) return;
+    const latest = readWorksJobs(ctxUnit.id);
+    const requested = params.get("job");
+    if (requested && latest.some((job) => job.id === requested)) {
+      setJobs(latest);
+      return;
+    }
+    const preferred =
+      toolPhase === "operate"
+        ? latest.find((job) => job.kind === "operate")
+        : latest.find((job) => job.kind === "opening");
+    const job = preferred ?? ensureToolQuiz(ctxUnit.id);
+    setJobs(readWorksJobs(ctxUnit.id));
+    if (params.get("job") === job.id) return;
+    const next = new URLSearchParams(params);
+    next.set("tool", "1");
+    next.set("job", job.id);
+    if (fromV25) next.set("from", "v25");
+    if (!next.get("phase")) next.set("phase", toolPhase);
+    setParams(next, { replace: true });
+  }, [toolMode, ctxUnit.id, fromV25, toolPhase, params, setParams]);
+
   const visible = jobs
     .filter((job) => job.kind === kind)
     .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
@@ -193,8 +176,18 @@ export function WorksPage() {
     ? (jobs.find((job) => job.id === selectedId) ?? null)
     : null;
 
+  const jobParams = (jobId: string) =>
+    toolMode
+      ? {
+          tool: "1",
+          job: jobId,
+          phase: toolPhase,
+          ...(fromV25 ? { from: "v25" } : {}),
+        }
+      : { job: jobId };
+
   const openJob = (job: WorksJob) => {
-    setParams({ job: job.id });
+    setParams(jobParams(job.id));
     setPage(0);
   };
 
@@ -208,34 +201,31 @@ export function WorksPage() {
   const questions = selected
     ? questionsForJobKind(ctxUnit, selected.kind)
     : [];
-  const canWrite = selected ? canFillWorksJob(role, selected) : false;
+  const canWrite = selected
+    ? toolMode
+      ? (role === "officer" || role === "contractor") &&
+        !quizIsConfirmed(selected.quiz)
+      : canFillWorksJob(role, selected)
+    : false;
+  const useV25Checklist = fromV25;
   const lastPage = Math.max(questions.length - 1, 0);
   const canLock = Boolean(
     selected &&
-      page >= lastPage &&
-      canLockWorksJob(role, selected, ctxUnit),
+      (useV25Checklist
+        ? role === "officer" &&
+          quizHasSavedAnswers(selected.quiz) &&
+          !quizIsConfirmed(selected.quiz)
+        : !toolMode &&
+          page >= lastPage &&
+          canLockWorksJob(role, selected, ctxUnit)),
   );
   const question = questions[Math.min(page, lastPage)];
   const outcome = selected ? worksOutcome(selected, ctxUnit, role) : null;
   const locked = Boolean(outcome?.locked);
-  const agreedLabels =
-    selected && question
-      ? [
-          ...question.options
-            .filter((opt) =>
-              isOptionOn(selected.quiz.answers?.[question.id], opt.id),
-            )
-            .map((opt) => opt.label),
-          ...(isOptionOn(selected.quiz.answers?.[question.id], NONE_ID)
-            ? ["None of these"]
-            : []),
-          ...(isOptionOn(selected.quiz.answers?.[question.id], NOT_SURE_ID)
-            ? ["Not sure yet"]
-            : []),
-        ]
-      : [];
   const progress = selected
-    ? quizProgress(selected.quiz, ctxUnit)
+    ? useV25Checklist
+      ? v25QuizProgress(selected.quiz, ctxUnit)
+      : quizProgress(selected.quiz, ctxUnit)
     : { answered: 0, total: 0 };
 
   const listTitle =
@@ -248,7 +238,7 @@ export function WorksPage() {
   return (
     <div className="dls-page flex flex-col gap-6 !pt-5 tablet:!pt-8">
       <header className="flex max-w-xl flex-col gap-3">
-        {selected ? (
+        {selected && !toolMode ? (
           <button
             type="button"
             onClick={() => setParams({})}
@@ -258,7 +248,7 @@ export function WorksPage() {
             All works
           </button>
         ) : (
-          <Link to={PROCESS_FOR_KIND[kind]} className={TERTIARY_BACK}>
+          <Link to={processBack} className={TERTIARY_BACK}>
             <BackArrow />
             Back to Process
           </Link>
@@ -268,18 +258,31 @@ export function WorksPage() {
             Works
           </p>
           <h1 className="text-[28px] leading-9 font-bold text-black">
-            {selected ? selected.title : listTitle}
+            {toolMode
+              ? "Planned Works Quiz"
+              : selected
+                ? selected.title
+                : listTitle}
           </h1>
           <p className="text-sm leading-[18px] text-grey-500">
-            {selected ? ctxUnit.unitNo : intro}
+            {toolMode
+              ? "Name the works this unit needs. This does not lock Process."
+              : selected
+                ? ctxUnit.unitNo
+                : intro}
           </p>
-          {selected && (
+          {selected && !toolMode && (
             <p className="text-sm leading-[18px] text-grey-700">
               {outcome?.locked
                 ? "The Project Officer locked this list."
                 : outcome?.ready
                   ? "Filling the list. Not locked yet."
                   : "This list has no answers yet."}
+            </p>
+          )}
+          {toolMode && role === "tenant" && (
+            <p className="text-sm leading-[18px] text-grey-700">
+              Your contractor fills this. You can read the answers.
             </p>
           )}
           {!selected && openingSkip ? (
@@ -290,7 +293,7 @@ export function WorksPage() {
         </div>
       </header>
 
-      {!selected ? (
+      {!selected && !toolMode ? (
         <div className="flex max-w-xl flex-col gap-4">
           {canStartWorksJob(role, kind, jobs, ctxUnit.id) &&
             (kind === "operate" || visible.length === 0) && (
@@ -339,109 +342,75 @@ export function WorksPage() {
         </div>
       ) : (
         <div className="flex max-w-xl flex-col gap-6">
-          {role === "tenant" && !outcome?.ready && (
+          {role === "tenant" && !toolMode && !outcome?.ready && (
             <p className="text-sm leading-[18px] text-grey-700">
               Your Project Officer fills this with the contractor. You read the
               list when it is ready.
             </p>
           )}
 
-          {question && (canWrite || outcome?.ready) && (
+          {(useV25Checklist ? selected : question) &&
+            (canWrite || role === "tenant" || outcome?.ready) && (
             <section className="flex flex-col gap-4 rounded-[var(--radius-2xl)] bg-white p-4 shadow-[var(--shadow-light-bg)] tablet:p-6">
               <p className="text-sm leading-[18px] text-grey-700">
                 {locked
                   ? "Locked answers"
                   : `${progress.answered} of ${progress.total} answered`}
               </p>
-              <div className="flex flex-col gap-3">
-                <p className="text-base leading-5 font-bold text-black">
-                  {question.prompt}
-                </p>
-                {locked ? (
-                  <ul className="flex flex-col overflow-hidden rounded-[var(--radius-md)] border border-grey-100 bg-grey-25">
-                    {agreedLabels.length > 0 ? (
-                      agreedLabels.map((label) => (
-                        <li
-                          key={label}
-                          className="border-t border-grey-100 px-3 py-4 text-sm leading-[18px] font-bold text-black first:border-t-0"
-                        >
-                          {label}
-                        </li>
-                      ))
-                    ) : (
-                      <li className="px-3 py-4 text-sm leading-[18px] text-grey-600">
-                        Nothing agreed on this question.
-                      </li>
-                    )}
-                  </ul>
-                ) : (
-                <div className="flex flex-col overflow-hidden rounded-[var(--radius-md)] border border-grey-200 bg-white">
-                  {question.options.map((opt) => (
-                    <CheckRow
-                      key={opt.id}
-                      label={opt.label}
-                      on={isOptionOn(selected.quiz.answers?.[question.id], opt.id)}
-                      disabled={!canWrite}
-                      onToggle={() => {
-                        const next = persistJob(
-                          ctxUnit,
-                          selected,
-                          toggleQuestionOption(
-                            selected.quiz,
-                            question.id as QuestionId,
-                            opt.id,
-                          ),
-                        );
-                        setJobs(readWorksJobs(ctxUnit.id));
-                        setParams({ job: next.id });
-                      }}
-                    />
-                  ))}
-                  <CheckRow
-                    label="None of these"
-                    exclusive
-                    on={isOptionOn(selected.quiz.answers?.[question.id], NONE_ID)}
-                    disabled={!canWrite}
-                    onToggle={() => {
-                      persistJob(
-                        ctxUnit,
-                        selected,
-                        toggleQuestionOption(
-                          selected.quiz,
-                          question.id as QuestionId,
-                          NONE_ID,
-                        ),
-                      );
-                      setJobs(readWorksJobs(ctxUnit.id));
-                    }}
-                  />
-                  {role !== "officer" && (
-                    <CheckRow
-                      label="Not sure yet"
-                      exclusive
-                      on={isOptionOn(
-                        selected.quiz.answers?.[question.id],
-                        NOT_SURE_ID,
-                      )}
-                      disabled={!canWrite}
-                      onToggle={() => {
-                        persistJob(
-                          ctxUnit,
-                          selected,
-                          toggleQuestionOption(
-                            selected.quiz,
-                            question.id as QuestionId,
-                            NOT_SURE_ID,
-                          ),
-                        );
-                        setJobs(readWorksJobs(ctxUnit.id));
-                      }}
-                    />
-                  )}
-                </div>
-                )}
-              </div>
-              {questions.length > 1 && (
+              {useV25Checklist && selected ? (
+                <QuizChecklistV25
+                  state={selected.quiz}
+                  unit={ctxUnit}
+                  disabled={!canWrite}
+                  locked={locked}
+                  onChoice={(id, value) => {
+                    const next = persistJob(
+                      ctxUnit,
+                      selected,
+                      setV25Choice(selected.quiz, id, value),
+                    );
+                    setJobs(readWorksJobs(ctxUnit.id));
+                    setParams(jobParams(next.id));
+                  }}
+                  onCheck={(id, slug) => {
+                    const next = persistJob(
+                      ctxUnit,
+                      selected,
+                      setV25Check(selected.quiz, id, slug),
+                    );
+                    setJobs(readWorksJobs(ctxUnit.id));
+                    setParams(jobParams(next.id));
+                  }}
+                  onYesNo={(field, yes) => {
+                    const next = persistJob(
+                      ctxUnit,
+                      selected,
+                      setV25YesNo(selected.quiz, field, yes),
+                    );
+                    setJobs(readWorksJobs(ctxUnit.id));
+                    setParams(jobParams(next.id));
+                  }}
+                />
+              ) : question ? (
+                <QuizQuestionBlock
+                  question={question}
+                  answer={selected.quiz.answers?.[question.id]}
+                  unit={ctxUnit}
+                  allowUnsure={role !== "officer"}
+                  disabled={!canWrite}
+                  locked={locked}
+                  onToggle={(questionId, optionId) => {
+                    const next = persistJob(
+                      ctxUnit,
+                      selected,
+                      toggleQuestionOption(selected.quiz, questionId, optionId),
+                    );
+                    setJobs(readWorksJobs(ctxUnit.id));
+                    setParams(jobParams(next.id));
+                  }}
+                />
+              ) : null}
+              {!useV25Checklist && questions.length > 1 && (
                 <div className="flex items-center justify-between gap-3">
                   {page > 0 ? (
                     <button
@@ -469,7 +438,13 @@ export function WorksPage() {
                     <button
                       type="button"
                       className="min-h-10 min-w-12 px-1 text-sm leading-[18px] font-bold text-purple-600"
-                      onClick={() => setParams({})}
+                      onClick={() =>
+                        setParams(
+                          toolMode && selected
+                            ? jobParams(selected.id)
+                            : {},
+                        )
+                      }
                     >
                       Done
                     </button>
@@ -484,7 +459,7 @@ export function WorksPage() {
                   onClick={() => {
                     const next = lockWorksJob(ctxUnit.id, selected);
                     setJobs(readWorksJobs(ctxUnit.id));
-                    setParams({ job: next.id });
+                    setParams(jobParams(next.id));
                   }}
                   className="inline-flex h-10 w-fit items-center justify-center rounded-[var(--radius-sm)] bg-purple-600 px-4 text-sm leading-[18px] font-bold text-white hover:bg-purple-700"
                 >
@@ -494,10 +469,11 @@ export function WorksPage() {
             </section>
           )}
 
-          {outcome?.locked && (
+          {outcome?.ready && role !== "tenant" && (
             <WorksLockedOutcome
               permits={outcome.permits}
               steps={outcome.steps}
+              locked={outcome.locked}
               role={role}
               unit={ctxUnit}
             />

@@ -38,18 +38,18 @@ export const OPERATE_QUIZ_FOCUS = "operate-works-quiz";
 export const OPERATE_QUIZ_STEP: Step = {
   name: OPERATE_QUIZ_STEP_NAME,
   responsible: "You",
-  what: "If you need to change the unit after opening, answer five questions about these works.",
+  what: "If you need to change the unit after opening, tick what applies on these works.",
   whatFor: {
     tenant:
-      "If you need to change the unit after opening, answer five questions about these works.",
+      "If you need to change the unit after opening, tick what applies on these works.",
     contractor:
-      "If the unit needs works after opening, answer five questions about these works.",
+      "If the unit needs works after opening, tick what applies on these works.",
     officer:
-      "If they need works after opening, fill five questions or the contractor can.",
+      "If they need works after opening, tick what applies or the contractor can.",
   },
   subSteps: [
     {
-      text: "Answer five questions about these works. Select all that apply.",
+      text: "Tick the unit, works, and features that apply.",
       audience: ["tenant", "contractor", "officer"],
     },
   ],
