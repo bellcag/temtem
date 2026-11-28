@@ -1,0 +1,1 @@
+var e=`/temtem/v48/assets/pdf-BmpOGVci.svg`;export{e as t};
